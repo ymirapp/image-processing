@@ -1,0 +1,19 @@
+{
+  "name": "ymir-image-processing",
+  "version": "1.0.0",
+  "author": "Carl Alexander",
+  "description": "Ymir Lambda@Edge function used to with CloudFront to make an image processing proxy",
+  "license": "MIT",
+  "main": "index.js",
+  "dependencies": {
+    "animated-gif-detector": "^1.2.0",
+    "sharp": "^0.30.5"
+  },
+  "devDependencies": {
+    "aws-sdk": "^2.1088.0"
+  },
+  "scripts": {
+    "build-zip": "rm ymir-image-processing.zip; zip -r --exclude='node_modules/aws-sdk/*' ymir-image-processing.zip ./node_modules/ index.js",
+    "calculate-sha": "openssl dgst -sha256 -binary ymir-image-processing.zip | openssl enc -base64"
+  }
+}
