@@ -12,6 +12,7 @@
   },
   "scripts": {
     "build-zip": "rm ymir-image-processing.zip; zip -r ymir-image-processing.zip ./node_modules/ index.js",
-    "calculate-sha": "openssl dgst -sha256 -binary ymir-image-processing.zip | openssl enc -base64"
+    "calculate-sha": "openssl dgst -sha256 -binary ymir-image-processing.zip | openssl enc -base64",
+    "update": "npm update --os=linux --cpu=x64"
   }
 }
