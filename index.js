@@ -38,7 +38,7 @@ exports.handler = async (event, context, callback) => {
 
         if ('image/gif' === object.ContentType) {
             image.png();
-            contentType = [{ value: 'image/png' }];
+            contentType = [{ key: 'Content-Type', value: 'image/png' }];
         }
 
         if (request.headers['accept'] && request.headers['accept'][0].value.match('image/webp')) {
