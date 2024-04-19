@@ -14,7 +14,7 @@ exports.handler = async (event, context, callback) => {
             return callback(null, response);
         }
 
-        const match = request.origin.s3.domainName.match(/([^.]*)\.s3\.amazonaws\.com/i);
+        const match = request.origin.s3.domainName.match(/([^.]*)\.s3(\.[^.]*)?\.amazonaws\.com/i);
 
         if (!match || !match[1] || 'string' !== typeof match[1]) {
             return callback(null, response);
