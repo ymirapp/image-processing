@@ -10,17 +10,18 @@ exports.handler = async (event, context, callback) => {
         const request = event.Records[0].cf.request;
         let response = event.Records[0].cf.response;
 
-        if ('200' !== response.status) {
+        if ('200' !== response.status || !request.origin || !request.origin.s3 || !request.origin.s3.domainName) {
             return callback(null, response);
         }
 
-        const bucket = request.origin.s3.domainName.match(/([^.]*)\.s3\.amazonaws\.com/i)[1];
+        const match = request.origin.s3.domainName.match(/([^.]*)\.s3\.amazonaws\.com/i);
 
-        if ('string' !== typeof bucket) {
+        if (!match || !match[1] || 'string' !== typeof match[1]) {
             return callback(null, response);
         }
 
         const allowedContentTypes = ['image/gif', 'image/jpeg', 'image/png'];
+        const bucket = match[1];
         const key = decodeURIComponent(request.uri.substring(1));
         const object = await s3.getObject({ Bucket: bucket, Key: key }).promise();
         
