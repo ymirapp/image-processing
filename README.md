@@ -6,6 +6,8 @@
 
 # Ymir image processing function
 
+[![Actions Status](https://github.com/ymirapp/image-processing/workflows/Continuous%20Integration/badge.svg)](https://github.com/ymirapp/image-processing/actions)
+
 [Ymir][1] [Lambda@Edge][3] function used by [CloudFront][4] to process and optimize images.
 
 ## Installation
