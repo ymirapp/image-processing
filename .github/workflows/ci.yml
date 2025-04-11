@@ -5,21 +5,44 @@ on:
   pull_request:
 
 jobs:
-  test:
-    name: Run tests
+  lint:
+    name: Lint and format check
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup node.js 18.x
         uses: actions/setup-node@v4
         with:
           node-version: 18.x
           cache: 'npm'
-      
+
       - name: Install dependencies
         run: npm ci
-      
+
+      - name: Check code formatting
+        run: npm run format:check
+
+      - name: Run linter
+        run: npm run lint:check
+
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup node.js 18.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Run tests
         run: npm test
