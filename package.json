@@ -7,7 +7,7 @@
   "main": "index.js",
   "dependencies": {
     "animated-gif-detector": "^1.2.0",
-    "sharp": "^0.33"
+    "sharp": "^0.34"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.433.0",
