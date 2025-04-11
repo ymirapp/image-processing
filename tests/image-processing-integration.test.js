@@ -5,10 +5,23 @@ const path = require('path');
 const sharp = require('sharp');
 const { createCloudFrontEvent, ensureFixturesDirectory } = require('./utils');
 
+const mockS3Send = jest.fn();
+
+jest.mock('@aws-sdk/client-s3', () => {
+    return {
+        S3Client: jest.fn().mockImplementation(() => ({
+            send: mockS3Send
+        })),
+        GetObjectCommand: jest.fn().mockImplementation((params) => ({
+            ...params,
+            constructor: { name: 'GetObjectCommand' }
+        }))
+    };
+});
+
 describe('Image Processing Integration', () => {
     const fixturesDir = ensureFixturesDirectory();
     let handler;
-    let mockS3GetObject;
     
     beforeAll(async () => {
         await sharp({
@@ -37,31 +50,46 @@ describe('Image Processing Integration', () => {
     beforeEach(() => {
         jest.resetModules();
         
-        mockS3GetObject = jest.fn().mockResolvedValue({
-            ContentType: 'image/jpeg',
-            Body: fs.readFileSync(path.join(fixturesDir, 'test-image.jpg'))
-        });
-        
-        jest.mock('aws-sdk', () => ({
-            S3: jest.fn().mockImplementation(() => ({
-                getObject: jest.fn().mockImplementation(() => ({
-                    promise: mockS3GetObject
-                }))
-            }))
-        }));
-        
-        jest.mock('animated-gif-detector', () => {
-            return jest.fn().mockImplementation((buffer) => {
-                return buffer._isAnimated === true;
-            });
+        mockS3Send.mockImplementation(async (command) => {
+            if (command.constructor.name === 'GetObjectCommand') {
+                const key = command.Key;
+                if (key === 'test-image.jpg') {
+                    return {
+                        ContentType: 'image/jpeg',
+                        Body: {
+                            [Symbol.asyncIterator]: async function* () {
+                                yield fs.readFileSync(path.join(fixturesDir, 'test-image.jpg'));
+                            }
+                        }
+                    };
+                } else if (key === 'test-image.gif') {
+                    return {
+                        ContentType: 'image/gif',
+                        Body: {
+                            [Symbol.asyncIterator]: async function* () {
+                                yield fs.readFileSync(path.join(fixturesDir, 'test-image.gif'));
+                            }
+                        }
+                    };
+                } else if (key === 'animated.gif') {
+                    return {
+                        ContentType: 'image/gif',
+                        Body: {
+                            [Symbol.asyncIterator]: async function* () {
+                                yield fs.readFileSync(path.join(fixturesDir, 'animated.gif'));
+                            }
+                        }
+                    };
+                }
+            }
+            throw new Error(`Unexpected command or key: ${command.constructor.name}, ${command.Key}`);
         });
         
         handler = require('../index').handler;
     });
     
     afterEach(() => {
-        jest.unmock('aws-sdk');
-        jest.unmock('animated-gif-detector');
+        jest.clearAllMocks();
     });
     
     test('should process a simple JPEG without transformations', async () => {
@@ -147,11 +175,6 @@ describe('Image Processing Integration', () => {
     });
     
     test('should convert GIF to PNG format', async () => {
-        mockS3GetObject.mockResolvedValue({
-            ContentType: 'image/gif',
-            Body: fs.readFileSync(path.join(fixturesDir, 'test-image.gif'))
-        });
-        
         const event = createCloudFrontEvent({ 
             uri: '/test-image.gif'
         });
@@ -180,11 +203,6 @@ describe('Image Processing Integration', () => {
     });
     
     test('should apply custom quality when parameter is provided', async () => {
-        mockS3GetObject.mockResolvedValue({
-            ContentType: 'image/jpeg',
-            Body: fs.readFileSync(path.join(fixturesDir, 'test-image.jpg'))
-        });
-        
         const event = createCloudFrontEvent({
             uri: '/test-image.jpg',
             querystring: 'quality=30',
@@ -213,11 +231,6 @@ describe('Image Processing Integration', () => {
     });
     
     test('should combine multiple transformations', async () => {
-        mockS3GetObject.mockResolvedValue({
-            ContentType: 'image/jpeg',
-            Body: fs.readFileSync(path.join(fixturesDir, 'test-image.jpg'))
-        });
-        
         const event = createCloudFrontEvent({
             uri: '/test-image.jpg',
             querystring: 'width=250&quality=50',
@@ -246,34 +259,15 @@ describe('Image Processing Integration', () => {
     });
     
     test('should not process animated GIFs', async () => {
-        const animatedGifBuffer = Buffer.from('test-animated-gif');
-        animatedGifBuffer._isAnimated = true;
-        
-        mockS3GetObject.mockResolvedValue({
-            ContentType: 'image/gif',
-            Body: animatedGifBuffer
-        });
-        
-        const event = createCloudFrontEvent({ 
-            uri: '/animated.gif'
-        });
-        
-        event.Records[0].cf.response.headers['content-type'] = [
-            { key: 'Content-Type', value: 'image/gif' }
-        ];
+        const event = createCloudFrontEvent({ uri: '/animated.gif' });
+        const originalResponse = event.Records[0].cf.response;
         
         const callback = jest.fn();
         await handler(event, {}, callback);
         
         expect(callback).toHaveBeenCalledTimes(1);
-    
-        const originalResponse = event.Records[0].cf.response;
-        const response = callback.mock.calls[0][1];
-        
-        expect(response).toBe(originalResponse);
-        
-        expect(response.headers['content-type']).toEqual([
-            { key: 'Content-Type', value: 'image/gif' }
-        ]);
+
+        expect(callback.mock.calls[0][1]).toBe(originalResponse);
+        expect(callback.mock.calls[0][1].bodyEncoding).toBeUndefined();
     });
 });

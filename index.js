@@ -1,9 +1,9 @@
 'use strict';
 
-const animated = require('animated-gif-detector'),
-      aws = require('aws-sdk'),
-      sharp = require('sharp'),
-      s3 = new aws.S3({ apiVersion: '2006-03-01' });
+const animated = require('animated-gif-detector');
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const sharp = require('sharp');
+const s3Client = new S3Client();
 
 exports.handler = async (event, context, callback) => {
     try {
@@ -23,20 +23,23 @@ exports.handler = async (event, context, callback) => {
         const allowedContentTypes = ['image/gif', 'image/jpeg', 'image/png'];
         const bucket = match[1];
         const key = decodeURIComponent(request.uri.substring(1));
-        const object = await s3.getObject({ Bucket: bucket, Key: key }).promise();
         
-        if (!object.ContentType 
-          || !allowedContentTypes.includes(object.ContentType)
-          || ('image/gif' === object.ContentType && animated(object.Body))
+        const getObjectCommand = new GetObjectCommand({ Bucket: bucket, Key: key });
+        const objectResponse = await s3Client.send(getObjectCommand);
+        
+        if (!objectResponse.ContentType 
+          || !allowedContentTypes.includes(objectResponse.ContentType)
+          || ('image/gif' === objectResponse.ContentType && animated(await streamToBuffer(objectResponse.Body)))
         ) {
             return callback(null, response);
         }
         
         let contentType = null;
-        const image = sharp(object.Body);
+        const objectBody = await streamToBuffer(objectResponse.Body);
+        const image = sharp(objectBody);
         const params = new URLSearchParams(request.querystring);
 
-        if ('image/gif' === object.ContentType) {
+        if ('image/gif' === objectResponse.ContentType) {
             image.png();
             contentType = [{ key: 'Content-Type', value: 'image/png' }];
         }
@@ -74,3 +77,14 @@ exports.handler = async (event, context, callback) => {
         console.log(error);
     }
 };
+
+// Helper function to convert a stream to a buffer
+async function streamToBuffer(stream) {
+    const chunks = [];
+    
+    for await (const chunk of stream) {
+        chunks.push(chunk);
+    }
+    
+    return Buffer.concat(chunks);
+}

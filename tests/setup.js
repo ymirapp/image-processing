@@ -1,7 +1,19 @@
 'use strict';
 
-const AWS = require('aws-sdk-mock');
+jest.mock('@aws-sdk/client-s3', () => {
+    const mockSend = jest.fn();
+    
+    return {
+        S3Client: jest.fn().mockImplementation(() => ({
+            send: mockSend
+        })),
+        GetObjectCommand: jest.fn().mockImplementation((params) => ({
+            ...params,
+            __type: 'GetObjectCommand',
+        }))
+    };
+});
 
 beforeEach(() => {
-    AWS.restore();
+    jest.clearAllMocks();
 });

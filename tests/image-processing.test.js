@@ -4,14 +4,16 @@ const fs = require('fs');
 const path = require('path');
 const { createCloudFrontEvent, ensureFixturesDirectory } = require('./utils');
 
-jest.mock('aws-sdk', () => {
-    const mockGetObjectPromise = jest.fn();
-    
+const mockS3Send = jest.fn();
+
+jest.mock('@aws-sdk/client-s3', () => {
     return {
-        S3: jest.fn().mockImplementation(() => ({
-            getObject: jest.fn().mockImplementation(() => ({
-                promise: mockGetObjectPromise
-            }))
+        S3Client: jest.fn().mockImplementation(() => ({
+            send: mockS3Send
+        })),
+        GetObjectCommand: jest.fn().mockImplementation((params) => ({
+            ...params,
+            constructor: { name: 'GetObjectCommand' }
         }))
     };
 });
@@ -45,28 +47,24 @@ describe('Image Processing', () => {
     const animatedGifBuffer = Buffer.from('animated-gif-data');
     animatedGifBuffer._isAnimated = true;
     
-    let aws;
     let sharp;
     let animated;
-    let mockGetObjectPromise;
     let handler;
     
     beforeEach(() => {
         jest.clearAllMocks();
-        jest.resetModules();
         
-        aws = require('aws-sdk');
-        sharp = require('sharp');
-        animated = require('animated-gif-detector');
-        
-        mockGetObjectPromise = aws.S3().getObject().promise;
-        mockGetObjectPromise.mockImplementation(async () => {
-            return {
-                ContentType: 'image/jpeg',
-                Body: jpegBuffer,
-            };
+        mockS3Send.mockResolvedValue({
+            ContentType: 'image/jpeg',
+            Body: {
+                [Symbol.asyncIterator]: async function* () {
+                    yield jpegBuffer;
+                }
+            }
         });
         
+        sharp = require('sharp');
+        animated = require('animated-gif-detector');
         handler = require('../index').handler;
     });
     
@@ -233,9 +231,13 @@ describe('Image Processing', () => {
     });
     
     test('should convert GIF to PNG', async () => {
-        mockGetObjectPromise.mockResolvedValueOnce({
+        mockS3Send.mockResolvedValueOnce({
             ContentType: 'image/gif',
-            Body: gifBuffer
+            Body: {
+                [Symbol.asyncIterator]: async function* () {
+                    yield gifBuffer;
+                }
+            }
         });
         
         const event = createCloudFrontEvent({ uri: '/test-image.gif' });
@@ -252,9 +254,13 @@ describe('Image Processing', () => {
     });
     
     test('should skip processing for animated GIFs', async () => {
-            mockGetObjectPromise.mockResolvedValueOnce({
+        mockS3Send.mockResolvedValueOnce({
             ContentType: 'image/gif',
-            Body: animatedGifBuffer,
+            Body: {
+                [Symbol.asyncIterator]: async function* () {
+                    yield animatedGifBuffer;
+                }
+            }
         });
         
         const event = createCloudFrontEvent({ uri: '/animated-test.gif' });
@@ -267,9 +273,13 @@ describe('Image Processing', () => {
     });
     
     test('should skip processing for unsupported content types', async () => {
-            mockGetObjectPromise.mockResolvedValueOnce({
+        mockS3Send.mockResolvedValueOnce({
             ContentType: 'application/pdf',
-            Body: Buffer.from('pdf-data'),
+            Body: {
+                [Symbol.asyncIterator]: async function* () {
+                    yield Buffer.from('pdf-data');
+                }
+            }
         });
         
         const event = createCloudFrontEvent({ uri: '/document.pdf' });
@@ -296,7 +306,7 @@ describe('Image Processing', () => {
     });
     
     test('should handle S3 errors gracefully', async () => {
-        mockGetObjectPromise.mockRejectedValueOnce(new Error('S3 Error'));
+        mockS3Send.mockRejectedValueOnce(new Error('S3 Error'));
         
         const event = createCloudFrontEvent({ uri: '/test-image.jpg' });
         const callback = jest.fn();
