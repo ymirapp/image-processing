@@ -1,2 +1,3 @@
 node_modules/
+tests/fixtures/test-image.*
 ymir-image-processing.zip
