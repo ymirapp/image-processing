@@ -25,7 +25,7 @@ module.exports = {
     semi: ['error', 'always'],
     quotes: ['error', 'single', { avoidEscape: true }],
     'comma-dangle': ['error', 'always-multiline'],
-    indent: ['error', 2],
+    indent: ['error', 2, { SwitchCase: 1 }],
     'arrow-parens': ['error', 'always'],
     'arrow-spacing': 'error',
     'space-before-function-paren': [
