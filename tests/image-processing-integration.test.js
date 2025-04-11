@@ -283,4 +283,81 @@ describe('Image Processing Integration', () => {
     expect(callback.mock.calls[0][1]).toBe(originalResponse);
     expect(callback.mock.calls[0][1].bodyEncoding).toBeUndefined();
   });
+
+  test('should preserve original GIF format when format=original is specified', async () => {
+    const event = createCloudFrontEvent({
+      uri: '/test-image.gif',
+      querystring: 'format=original',
+    });
+
+    const callback = jest.fn();
+    await handler(event, {}, callback);
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith(null, expect.any(Object));
+
+    const response = callback.mock.calls[0][1];
+
+    expect(response.status).toBe('200');
+    expect(response.bodyEncoding).toBe('base64');
+
+    expect(response.headers['content-type']).toBeDefined();
+
+    const responseBuffer = Buffer.from(response.body, 'base64');
+    const metadata = await sharp(responseBuffer).metadata();
+
+    expect(metadata.format).toBe('gif');
+  });
+
+  test('should preserve original JPEG format when format=original is specified, even with WebP Accept header', async () => {
+    const event = createCloudFrontEvent({
+      uri: '/test-image.jpg',
+      querystring: 'format=original',
+      headers: {
+        accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
+      },
+    });
+
+    const callback = jest.fn();
+    await handler(event, {}, callback);
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith(null, expect.any(Object));
+
+    const response = callback.mock.calls[0][1];
+
+    expect(response.status).toBe('200');
+    expect(response.bodyEncoding).toBe('base64');
+
+    expect(response.headers['content-type']).toBeDefined();
+    expect(response.headers['content-type'][0].value).toBe('image/jpeg');
+
+    const responseBuffer = Buffer.from(response.body, 'base64');
+    const metadata = await sharp(responseBuffer).metadata();
+
+    expect(metadata.format).toBe('jpeg');
+  });
+
+  test('should force conversion to specific format when explicitly requested', async () => {
+    const event = createCloudFrontEvent({
+      uri: '/test-image.jpg',
+      querystring: 'format=webp',
+    });
+
+    const callback = jest.fn();
+    await handler(event, {}, callback);
+
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    const response = callback.mock.calls[0][1];
+
+    expect(response.headers['content-type']).toEqual([
+      { key: 'Content-Type', value: 'image/webp' },
+    ]);
+
+    const responseBuffer = Buffer.from(response.body, 'base64');
+    const metadata = await sharp(responseBuffer).metadata();
+
+    expect(metadata.format).toBe('webp');
+  });
 });
