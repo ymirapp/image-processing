@@ -1,5 +1,23 @@
 'use strict';
 
+/**
+ * Integration Tests for Image Processing Lambda Function
+ *
+ * This file provides end-to-end testing of the image processing functionality
+ * with real image transformations, focusing on:
+ *
+ * - Complete processing pipelines from input to output
+ * - Verification of actual image transformations (resizing, format conversion)
+ * - Visual quality and dimension validation
+ * - Format conversions with real image data
+ * - Combined transformation scenarios (multiple operations at once)
+ *
+ * These tests create actual image files and process them through the full
+ * Lambda function pipeline, validating that the entire system works correctly
+ * together with real-world inputs and outputs. While slower than unit tests,
+ * they provide confidence that the image processing delivers the expected results.
+ */
+
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
