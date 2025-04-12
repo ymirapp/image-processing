@@ -329,6 +329,37 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('jpeg');
   });
 
+  test('should preserve original JPEG format when format=original is specified with resize parameters, even with WebP Accept header', async () => {
+    const event = createCloudFrontEvent({
+      uri: '/test-image.jpg',
+      querystring: 'width=150&height=100&format=original',
+      headers: {
+        accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
+      },
+    });
+
+    const callback = jest.fn();
+    await handler(event, {}, callback);
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith(null, expect.any(Object));
+
+    const response = callback.mock.calls[0][1];
+
+    expect(response.status).toBe('200');
+    expect(response.bodyEncoding).toBe('base64');
+
+    expect(response.headers['content-type']).toBeDefined();
+    expect(response.headers['content-type'][0].value).toBe('image/jpeg');
+
+    const responseBuffer = Buffer.from(response.body, 'base64');
+    const metadata = await sharp(responseBuffer).metadata();
+
+    expect(metadata.format).toBe('jpeg');
+    expect(metadata.width).toBe(150);
+    expect(metadata.height).toBe(100);
+  });
+
   test('should force conversion to specific format when explicitly requested', async () => {
     const event = createCloudFrontEvent({
       uri: '/test-image.jpg',
