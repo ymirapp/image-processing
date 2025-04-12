@@ -19,7 +19,7 @@ exports.handler = async (event, context, callback) => {
     const request = event.Records[0].cf.request;
     const response = event.Records[0].cf.response;
 
-    if (shouldSkipProcessing(request, response)) {
+    if ('200' !== response.status || isCloudFrontRequestValid(request)) {
       return callback(null, response);
     }
 
@@ -34,7 +34,7 @@ exports.handler = async (event, context, callback) => {
     const key = decodeURIComponent(request.uri.substring(1));
     const objectResponse = await fetchOriginalImageFromS3(bucket, key);
 
-    if (shouldSkipImageProcessing(objectResponse, allowedContentTypes)) {
+    if (!objectResponse.ContentType || !allowedContentTypes.includes(objectResponse.ContentType)) {
       return callback(null, response);
     }
 
@@ -50,9 +50,8 @@ exports.handler = async (event, context, callback) => {
       return callback(null, response);
     }
 
-    const image = sharp(objectBody);
-
     let contentType = null;
+    const image = sharp(objectBody);
 
     if (!preserveOriginalFormat) {
       contentType = await processImageFormat(image, objectResponse, request, params, formatParam);
@@ -83,20 +82,13 @@ exports.handler = async (event, context, callback) => {
 };
 
 /**
- * Determines if the image processing should be skipped based on response status
- * and origin information.
+ * Checks if the CloudFront request is valid for processing.
  *
  * @param {Object} request - CloudFront request object
- * @param {Object} response - CloudFront response object
  * @returns {boolean} True if processing should be skipped, false otherwise
  */
-function shouldSkipProcessing(request, response) {
-  return (
-    '200' !== response.status ||
-    !request.origin ||
-    !request.origin.s3 ||
-    !request.origin.s3.domainName
-  );
+function isCloudFrontRequestValid(request) {
+  return !request.origin || !request.origin.s3 || !request.origin.s3.domainName;
 }
 
 /**
@@ -125,17 +117,6 @@ function extractBucketDetails(request) {
 function fetchOriginalImageFromS3(bucket, key) {
   const getObjectCommand = new GetObjectCommand({ Bucket: bucket, Key: key });
   return s3Client.send(getObjectCommand);
-}
-
-/**
- * Determines if image processing should be skipped based on content type.
- *
- * @param {Object} objectResponse - S3 object response
- * @param {string[]} allowedContentTypes - Array of allowed content types
- * @returns {boolean} True if processing should be skipped, false otherwise
- */
-function shouldSkipImageProcessing(objectResponse, allowedContentTypes) {
-  return !objectResponse.ContentType || !allowedContentTypes.includes(objectResponse.ContentType);
 }
 
 /**
