@@ -32,7 +32,7 @@ exports.handler = async (event, context, callback) => {
     const allowedContentTypes = ['image/gif', 'image/jpeg', 'image/png'];
     const bucket = bucketDetails;
     const key = decodeURIComponent(request.uri.substring(1));
-    const objectResponse = await fetchOriginalImage(bucket, key);
+    const objectResponse = await fetchOriginalImageFromS3(bucket, key);
 
     if (shouldSkipImageProcessing(objectResponse, allowedContentTypes)) {
       return callback(null, response);
@@ -122,7 +122,7 @@ function extractBucketDetails(request) {
  * @param {string} key - S3 object key
  * @returns {Promise<Object>} Promise resolving to the S3 object
  */
-function fetchOriginalImage(bucket, key) {
+function fetchOriginalImageFromS3(bucket, key) {
   const getObjectCommand = new GetObjectCommand({ Bucket: bucket, Key: key });
   return s3Client.send(getObjectCommand);
 }
