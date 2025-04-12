@@ -32,31 +32,30 @@ exports.handler = async (event, context, callback) => {
     const allowedContentTypes = ['image/gif', 'image/jpeg', 'image/png'];
     const bucket = bucketDetails;
     const key = decodeURIComponent(request.uri.substring(1));
-    const params = new URLSearchParams(request.querystring);
-    const formatSetting = params.get('format');
-
     const objectResponse = await fetchOriginalImage(bucket, key);
 
     if (shouldSkipImageProcessing(objectResponse, allowedContentTypes)) {
       return callback(null, response);
     }
 
-    const isAnimatedGif =
-      'image/gif' === objectResponse.ContentType &&
-      animated(await streamToBuffer(objectResponse.Body));
+    const objectBody = await streamToBuffer(objectResponse.Body);
+    const params = new URLSearchParams(request.querystring);
+    const formatParam = params.get('format');
+    const preserveOriginalFormat = formatParam === 'original';
 
-    if (isAnimatedGif) {
+    if (
+      'image/gif' === objectResponse.ContentType &&
+      (animated(objectBody) || preserveOriginalFormat)
+    ) {
       return callback(null, response);
     }
 
-    const objectBody = await streamToBuffer(objectResponse.Body);
     const image = sharp(objectBody);
-    const preserveOriginalFormat = formatSetting === 'original';
 
     let contentType = null;
 
     if (!preserveOriginalFormat) {
-      contentType = await processImageFormat(image, objectResponse, request, params, formatSetting);
+      contentType = await processImageFormat(image, objectResponse, request, params, formatParam);
     }
 
     if (params.has('width') || params.has('height')) {
