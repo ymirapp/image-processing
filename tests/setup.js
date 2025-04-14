@@ -1,15 +1,15 @@
 'use strict';
 
-jest.mock('@aws-sdk/client-s3', () => {
-  const mockSend = jest.fn();
+global.mockS3Send = jest.fn();
 
+jest.mock('@aws-sdk/client-s3', () => {
   return {
     S3Client: jest.fn().mockImplementation(() => ({
-      send: mockSend,
+      send: global.mockS3Send,
     })),
     GetObjectCommand: jest.fn().mockImplementation((params) => ({
       ...params,
-      __type: 'GetObjectCommand',
+      constructor: { name: 'GetObjectCommand' },
     })),
   };
 });

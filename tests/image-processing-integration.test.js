@@ -23,20 +23,6 @@ const path = require('path');
 const sharp = require('sharp');
 const { createCloudFrontEvent, ensureFixturesDirectory } = require('./utils');
 
-const mockS3Send = jest.fn();
-
-jest.mock('@aws-sdk/client-s3', () => {
-  return {
-    S3Client: jest.fn().mockImplementation(() => ({
-      send: mockS3Send,
-    })),
-    GetObjectCommand: jest.fn().mockImplementation((params) => ({
-      ...params,
-      constructor: { name: 'GetObjectCommand' },
-    })),
-  };
-});
-
 describe('Image Processing Integration', () => {
   const fixturesDir = ensureFixturesDirectory();
   let handler;

@@ -18,20 +18,6 @@
 
 const { createCloudFrontEvent } = require('./utils');
 
-const mockS3Send = jest.fn();
-
-jest.mock('@aws-sdk/client-s3', () => {
-  return {
-    S3Client: jest.fn().mockImplementation(() => ({
-      send: mockS3Send,
-    })),
-    GetObjectCommand: jest.fn().mockImplementation((params) => ({
-      ...params,
-      constructor: { name: 'GetObjectCommand' },
-    })),
-  };
-});
-
 jest.mock('sharp', () => {
   const mockSharp = jest.fn().mockReturnValue({
     resize: jest.fn().mockReturnThis(),

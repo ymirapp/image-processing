@@ -8,6 +8,9 @@ module.exports = {
   parserOptions: {
     ecmaVersion: 2020,
   },
+  globals: {
+    mockS3Send: 'writable',
+  },
   rules: {
     // General code quality
     'no-var': 'error',
