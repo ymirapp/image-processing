@@ -10,11 +10,12 @@ const path = require('path');
  * @return {Object} CloudFront event data
  */
 function createCloudFrontEvent(options = {}) {
-  const uri = options.uri || '/test-image.jpg';
-  const querystring = options.querystring || '';
-  const headers = options.headers || {};
-  const status = options.status || '200';
   const bucket = options.bucket || 'test-bucket';
+  const headers = options.headers || {};
+  const querystring = options.querystring || '';
+  const region = options.region || 'us-east-1';
+  const status = options.status || '200';
+  const uri = options.uri || '/test-image.jpg';
 
   return {
     Records: [
@@ -26,12 +27,12 @@ function createCloudFrontEvent(options = {}) {
             headers,
             origin: {
               s3: {
-                domainName: `${bucket}.s3.amazonaws.com`,
+                domainName: `${bucket}.s3.${region}.amazonaws.com`,
                 authMethod: 'none',
                 path: '',
                 port: 443,
                 protocol: 'https',
-                region: 'us-east-1',
+                region: region,
               },
             },
           },

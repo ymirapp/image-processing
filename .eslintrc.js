@@ -9,6 +9,7 @@ module.exports = {
     ecmaVersion: 2020,
   },
   globals: {
+    lastS3ClientConfiguration: 'writable',
     mockS3Send: 'writable',
   },
   rules: {

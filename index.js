@@ -3,7 +3,6 @@
 const animated = require('animated-gif-detector');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const sharp = require('sharp');
-const s3Client = new S3Client();
 
 /**
  * AWS Lambda function that processes images from S3 based on query parameters.
@@ -23,16 +22,15 @@ exports.handler = async (event, context, callback) => {
       return callback(null, response);
     }
 
-    const bucketDetails = extractBucketDetails(request);
+    const bucketInfo = extractBucketInfo(request);
 
-    if (!bucketDetails) {
+    if (!bucketInfo) {
       return callback(null, response);
     }
 
     const allowedContentTypes = ['image/gif', 'image/jpeg', 'image/png'];
-    const bucket = bucketDetails;
     const key = decodeURIComponent(request.uri.substring(1));
-    const objectResponse = await fetchOriginalImageFromS3(bucket, key);
+    const objectResponse = await fetchOriginalImageFromS3(bucketInfo, key);
 
     if (!objectResponse.ContentType || !allowedContentTypes.includes(objectResponse.ContentType)) {
       return callback(null, response);
@@ -92,30 +90,28 @@ function isCloudFrontRequestValid(request) {
 }
 
 /**
- * Extracts the S3 bucket name from the request's origin domain name.
+ * Extracts the S3 bucket info from the request's origin domain name.
  *
  * @param {Object} request - CloudFront request object
- * @returns {string|null} The bucket name or null if not found
+ * @returns {Object|null} The bucket info or null if not valid
  */
-function extractBucketDetails(request) {
-  const match = request.origin.s3.domainName.match(/([^.]*)\.s3(\.[^.]*)?\.amazonaws\.com/i);
+function extractBucketInfo(request) {
+  const match = request.origin.s3.domainName.match(/([^.]*)\.s3\.([^.]*)\.amazonaws\.com/i);
 
-  if (!match || !match[1] || 'string' !== typeof match[1]) {
-    return null;
-  }
-
-  return match[1];
+  return !match ? null : { name: match[1], region: match[2] };
 }
 
 /**
  * Fetches the original image from S3.
  *
- * @param {string} bucket - S3 bucket name
+ * @param {Object} bucketInfo - Object containing bucket name and region
  * @param {string} key - S3 object key
  * @returns {Promise<Object>} Promise resolving to the S3 object
  */
-function fetchOriginalImageFromS3(bucket, key) {
-  const getObjectCommand = new GetObjectCommand({ Bucket: bucket, Key: key });
+function fetchOriginalImageFromS3(bucketInfo, key) {
+  const s3Client = new S3Client({ region: bucketInfo.region });
+  const getObjectCommand = new GetObjectCommand({ Bucket: bucketInfo.name, Key: key });
+
   return s3Client.send(getObjectCommand);
 }
 

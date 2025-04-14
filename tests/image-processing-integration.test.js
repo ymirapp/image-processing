@@ -97,7 +97,10 @@ describe('Image Processing Integration', () => {
   });
 
   test('should process a simple JPEG without transformations', async () => {
-    const event = createCloudFrontEvent({ uri: '/test-image.jpg' });
+    const event = createCloudFrontEvent({
+      uri: '/test-image.jpg',
+      region: 'us-west-2',
+    });
 
     const callback = jest.fn();
 
@@ -117,12 +120,15 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('jpeg');
     expect(metadata.width).toBe(300);
     expect(metadata.height).toBe(200);
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
   });
 
   test('should resize JPEG image with width parameter', async () => {
     const event = createCloudFrontEvent({
       uri: '/test-image.jpg',
       querystring: 'width=150',
+      region: 'us-west-2',
     });
 
     const callback = jest.fn();
@@ -142,6 +148,8 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('jpeg');
     expect(metadata.width).toBe(150);
     expect(metadata.height).toBe(100);
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
   });
 
   test('should convert to WebP when Accept header includes webp', async () => {
@@ -150,6 +158,7 @@ describe('Image Processing Integration', () => {
       headers: {
         accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
       },
+      region: 'us-west-2',
     });
 
     const callback = jest.fn();
@@ -173,11 +182,14 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('webp');
     expect(metadata.width).toBe(300);
     expect(metadata.height).toBe(200);
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
   });
 
   test('should convert GIF to PNG format', async () => {
     const event = createCloudFrontEvent({
       uri: '/test-image.gif',
+      region: 'us-west-2',
     });
 
     const callback = jest.fn();
@@ -199,6 +211,8 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('png');
     expect(metadata.width).toBe(200);
     expect(metadata.height).toBe(200);
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
   });
 
   test('should apply custom quality when parameter is provided', async () => {
@@ -208,6 +222,7 @@ describe('Image Processing Integration', () => {
       headers: {
         accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
       },
+      region: 'us-west-2',
     });
 
     const callback = jest.fn();
@@ -227,6 +242,8 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('webp');
     expect(metadata.width).toBe(300);
     expect(metadata.height).toBe(200);
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
   });
 
   test('should combine multiple transformations', async () => {
@@ -236,6 +253,7 @@ describe('Image Processing Integration', () => {
       headers: {
         accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
       },
+      region: 'us-west-2',
     });
 
     const callback = jest.fn();
@@ -255,25 +273,14 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('webp');
     expect(metadata.width).toBe(250);
     expect(metadata.height).toBe(Math.round(200 * (250 / 300)));
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
   });
 
   test('should not process animated GIFs', async () => {
-    const event = createCloudFrontEvent({ uri: '/animated.gif' });
-    const originalResponse = event.Records[0].cf.response;
-
-    const callback = jest.fn();
-    await handler(event, {}, callback);
-
-    expect(callback).toHaveBeenCalledTimes(1);
-
-    expect(callback.mock.calls[0][1]).toBe(originalResponse);
-    expect(callback.mock.calls[0][1].bodyEncoding).toBeUndefined();
-  });
-
-  test('should not process a GIF when format=original is specified', async () => {
     const event = createCloudFrontEvent({
-      uri: '/test-image.gif',
-      querystring: 'format=original',
+      uri: '/animated.gif',
+      region: 'us-west-2',
     });
     const originalResponse = event.Records[0].cf.response;
 
@@ -284,6 +291,27 @@ describe('Image Processing Integration', () => {
 
     expect(callback.mock.calls[0][1]).toBe(originalResponse);
     expect(callback.mock.calls[0][1].bodyEncoding).toBeUndefined();
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+  });
+
+  test('should not process a GIF when format=original is specified', async () => {
+    const event = createCloudFrontEvent({
+      uri: '/test-image.gif',
+      querystring: 'format=original',
+      region: 'us-west-2',
+    });
+    const originalResponse = event.Records[0].cf.response;
+
+    const callback = jest.fn();
+    await handler(event, {}, callback);
+
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    expect(callback.mock.calls[0][1]).toBe(originalResponse);
+    expect(callback.mock.calls[0][1].bodyEncoding).toBeUndefined();
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
   });
 
   test('should preserve original JPEG format when format=original is specified, even with WebP Accept header', async () => {
@@ -293,6 +321,7 @@ describe('Image Processing Integration', () => {
       headers: {
         accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
       },
+      region: 'us-west-2',
     });
 
     const callback = jest.fn();
@@ -313,6 +342,8 @@ describe('Image Processing Integration', () => {
     const metadata = await sharp(responseBuffer).metadata();
 
     expect(metadata.format).toBe('jpeg');
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
   });
 
   test('should preserve original JPEG format when format=original is specified with resize parameters, even with WebP Accept header', async () => {
@@ -322,6 +353,7 @@ describe('Image Processing Integration', () => {
       headers: {
         accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
       },
+      region: 'us-west-2',
     });
 
     const callback = jest.fn();
@@ -344,12 +376,15 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('jpeg');
     expect(metadata.width).toBe(150);
     expect(metadata.height).toBe(100);
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
   });
 
   test('should force conversion to specific format when explicitly requested', async () => {
     const event = createCloudFrontEvent({
       uri: '/test-image.jpg',
       querystring: 'format=webp',
+      region: 'us-west-2',
     });
 
     const callback = jest.fn();
@@ -367,5 +402,7 @@ describe('Image Processing Integration', () => {
     const metadata = await sharp(responseBuffer).metadata();
 
     expect(metadata.format).toBe('webp');
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
   });
 });
