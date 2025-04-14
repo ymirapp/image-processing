@@ -19,7 +19,7 @@ exports.handler = async (event, context, callback) => {
     const request = event.Records[0].cf.request;
     const response = event.Records[0].cf.response;
 
-    if ('200' !== response.status || isCloudFrontRequestValid(request)) {
+    if ('200' !== response.status || !isCloudFrontRequestValid(request)) {
       return callback(null, response);
     }
 
@@ -88,7 +88,7 @@ exports.handler = async (event, context, callback) => {
  * @returns {boolean} True if processing should be skipped, false otherwise
  */
 function isCloudFrontRequestValid(request) {
-  return !request.origin || !request.origin.s3 || !request.origin.s3.domainName;
+  return request.origin && request.origin.s3 && request.origin.s3.domainName;
 }
 
 /**
