@@ -11,10 +11,14 @@ jest.mock('@aws-sdk/client-s3', () => {
         send: global.mockS3Send,
       };
     }),
-    GetObjectCommand: jest.fn().mockImplementation((params) => ({
-      ...params,
-      constructor: { name: 'GetObjectCommand' },
-    })),
+    GetObjectCommand: jest.fn().mockImplementation((params) => {
+      global.lastS3GetObjectCommandInput = params;
+
+      return {
+        ...params,
+        constructor: { name: 'GetObjectCommand' },
+      };
+    }),
   };
 });
 
@@ -22,4 +26,5 @@ beforeEach(() => {
   jest.clearAllMocks();
 
   global.lastS3ClientConfiguration = null;
+  global.lastS3GetObjectCommandInput = null;
 });

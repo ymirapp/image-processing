@@ -10,6 +10,7 @@ module.exports = {
   },
   globals: {
     lastS3ClientConfiguration: 'writable',
+    lastS3GetObjectCommandInput: 'writable',
     mockS3Send: 'writable',
   },
   rules: {

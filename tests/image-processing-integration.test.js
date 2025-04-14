@@ -100,6 +100,7 @@ describe('Image Processing Integration', () => {
     const event = createCloudFrontEvent({
       uri: '/test-image.jpg',
       region: 'us-west-2',
+      bucket: 'my-test-bucket',
     });
 
     const callback = jest.fn();
@@ -122,6 +123,7 @@ describe('Image Processing Integration', () => {
     expect(metadata.height).toBe(200);
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should resize JPEG image with width parameter', async () => {
@@ -129,6 +131,7 @@ describe('Image Processing Integration', () => {
       uri: '/test-image.jpg',
       querystring: 'width=150',
       region: 'us-west-2',
+      bucket: 'my-test-bucket',
     });
 
     const callback = jest.fn();
@@ -150,6 +153,7 @@ describe('Image Processing Integration', () => {
     expect(metadata.height).toBe(100);
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should convert to WebP when Accept header includes webp', async () => {
@@ -159,6 +163,7 @@ describe('Image Processing Integration', () => {
         accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
       },
       region: 'us-west-2',
+      bucket: 'my-test-bucket',
     });
 
     const callback = jest.fn();
@@ -184,12 +189,14 @@ describe('Image Processing Integration', () => {
     expect(metadata.height).toBe(200);
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should convert GIF to PNG format', async () => {
     const event = createCloudFrontEvent({
       uri: '/test-image.gif',
       region: 'us-west-2',
+      bucket: 'my-test-bucket',
     });
 
     const callback = jest.fn();
@@ -213,6 +220,7 @@ describe('Image Processing Integration', () => {
     expect(metadata.height).toBe(200);
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should apply custom quality when parameter is provided', async () => {
@@ -223,6 +231,7 @@ describe('Image Processing Integration', () => {
         accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
       },
       region: 'us-west-2',
+      bucket: 'my-test-bucket',
     });
 
     const callback = jest.fn();
@@ -244,6 +253,7 @@ describe('Image Processing Integration', () => {
     expect(metadata.height).toBe(200);
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should combine multiple transformations', async () => {
@@ -254,6 +264,7 @@ describe('Image Processing Integration', () => {
         accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
       },
       region: 'us-west-2',
+      bucket: 'my-test-bucket',
     });
 
     const callback = jest.fn();
@@ -275,12 +286,14 @@ describe('Image Processing Integration', () => {
     expect(metadata.height).toBe(Math.round(200 * (250 / 300)));
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should not process animated GIFs', async () => {
     const event = createCloudFrontEvent({
       uri: '/animated.gif',
       region: 'us-west-2',
+      bucket: 'my-test-bucket',
     });
     const originalResponse = event.Records[0].cf.response;
 
@@ -293,6 +306,7 @@ describe('Image Processing Integration', () => {
     expect(callback.mock.calls[0][1].bodyEncoding).toBeUndefined();
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should not process a GIF when format=original is specified', async () => {
@@ -300,6 +314,7 @@ describe('Image Processing Integration', () => {
       uri: '/test-image.gif',
       querystring: 'format=original',
       region: 'us-west-2',
+      bucket: 'my-test-bucket',
     });
     const originalResponse = event.Records[0].cf.response;
 
@@ -312,6 +327,7 @@ describe('Image Processing Integration', () => {
     expect(callback.mock.calls[0][1].bodyEncoding).toBeUndefined();
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should preserve original JPEG format when format=original is specified, even with WebP Accept header', async () => {
@@ -322,6 +338,7 @@ describe('Image Processing Integration', () => {
         accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
       },
       region: 'us-west-2',
+      bucket: 'my-test-bucket',
     });
 
     const callback = jest.fn();
@@ -344,6 +361,7 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('jpeg');
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should preserve original JPEG format when format=original is specified with resize parameters, even with WebP Accept header', async () => {
@@ -354,6 +372,7 @@ describe('Image Processing Integration', () => {
         accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
       },
       region: 'us-west-2',
+      bucket: 'my-test-bucket',
     });
 
     const callback = jest.fn();
@@ -378,6 +397,7 @@ describe('Image Processing Integration', () => {
     expect(metadata.height).toBe(100);
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should force conversion to specific format when explicitly requested', async () => {
@@ -385,6 +405,7 @@ describe('Image Processing Integration', () => {
       uri: '/test-image.jpg',
       querystring: 'format=webp',
       region: 'us-west-2',
+      bucket: 'my-test-bucket',
     });
 
     const callback = jest.fn();
@@ -404,5 +425,6 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('webp');
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 });
