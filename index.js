@@ -9,23 +9,21 @@ const sharp = require('sharp');
  * Supports resizing, format conversion, and quality adjustments for images.
  *
  * @param {Object} event - Lambda event object containing CloudFront request/response
- * @param {Object} context - Lambda context object
- * @param {Function} callback - Lambda callback function
- * @returns {void}
+ * @returns {Object} - CloudFront response object
  */
-exports.handler = async (event, context, callback) => {
+exports.handler = async (event) => {
   try {
     const request = event.Records[0].cf.request;
     const response = event.Records[0].cf.response;
 
     if ('200' !== response.status || !isCloudFrontRequestValid(request)) {
-      return callback(null, response);
+      return response;
     }
 
     const bucketInfo = extractBucketInfo(request);
 
     if (!bucketInfo) {
-      return callback(null, response);
+      return response;
     }
 
     const allowedContentTypes = ['image/gif', 'image/jpeg', 'image/png'];
@@ -33,7 +31,7 @@ exports.handler = async (event, context, callback) => {
     const objectResponse = await fetchOriginalImageFromS3(bucketInfo, key);
 
     if (!objectResponse.ContentType || !allowedContentTypes.includes(objectResponse.ContentType)) {
-      return callback(null, response);
+      return response;
     }
 
     const objectBody = await streamToBuffer(objectResponse.Body);
@@ -45,7 +43,7 @@ exports.handler = async (event, context, callback) => {
       'image/gif' === objectResponse.ContentType &&
       (animated(objectBody) || preserveOriginalFormat)
     ) {
-      return callback(null, response);
+      return response;
     }
 
     let contentType = null;
@@ -63,7 +61,7 @@ exports.handler = async (event, context, callback) => {
     const responseBody = buffer.toString('base64');
 
     if (isResponseTooLarge(responseBody)) {
-      return callback(null, response);
+      return response;
     }
 
     if (contentType) {
@@ -73,9 +71,11 @@ exports.handler = async (event, context, callback) => {
     response.body = responseBody;
     response.bodyEncoding = 'base64';
 
-    callback(null, response);
+    return response;
   } catch (error) {
     console.log(error);
+
+    return event.Records[0].cf.response;
   }
 };
 

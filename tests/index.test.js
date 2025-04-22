@@ -13,63 +13,49 @@ describe('Image Processing Lambda Function', () => {
       const invalidEvent = createCloudFrontEvent();
       delete invalidEvent.Records[0].cf.request.origin;
 
-      const callback = jest.fn();
-      const handler = require('../index').handler;
       const originalResponse = invalidEvent.Records[0].cf.response;
+      const response = await handler(invalidEvent);
 
-      await handler(invalidEvent, {}, callback);
-
-      expect(callback).toHaveBeenCalledTimes(1);
-      expect(callback).toHaveBeenCalledWith(null, originalResponse);
+      expect(response).toBe(originalResponse);
     });
 
     test('should correctly identify invalid CloudFront requests - missing s3 origin', async () => {
       const invalidEvent = createCloudFrontEvent();
       invalidEvent.Records[0].cf.request.origin = { custom: {} };
 
-      const callback = jest.fn();
-      const handler = require('../index').handler;
       const originalResponse = invalidEvent.Records[0].cf.response;
+      const response = await handler(invalidEvent);
 
-      await handler(invalidEvent, {}, callback);
-
-      expect(callback).toHaveBeenCalledTimes(1);
-      expect(callback).toHaveBeenCalledWith(null, originalResponse);
+      expect(response).toBe(originalResponse);
     });
 
     test('should correctly identify invalid CloudFront requests - missing domain name', async () => {
       const invalidEvent = createCloudFrontEvent();
       delete invalidEvent.Records[0].cf.request.origin.s3.domainName;
 
-      const callback = jest.fn();
-      const handler = require('../index').handler;
       const originalResponse = invalidEvent.Records[0].cf.response;
+      const response = await handler(invalidEvent);
 
-      await handler(invalidEvent, {}, callback);
-
-      expect(callback).toHaveBeenCalledTimes(1);
-      expect(callback).toHaveBeenCalledWith(null, originalResponse);
+      expect(response).toBe(originalResponse);
     });
 
     test('should correctly identify invalid CloudFront requests - invalid S3 domain', async () => {
       const event = createCloudFrontEvent();
       event.Records[0].cf.request.origin.s3.domainName = 'invalid-domain';
-      const callback = jest.fn();
+      const originalResponse = event.Records[0].cf.response;
 
-      await handler(event, {}, callback);
+      const response = await handler(event);
 
-      expect(callback).toHaveBeenCalledTimes(1);
-      expect(callback).toHaveBeenCalledWith(null, event.Records[0].cf.response);
+      expect(response).toBe(originalResponse);
     });
 
     test('should return unchanged response for non-200 status', async () => {
       const event = createCloudFrontEvent({ status: '404' });
-      const callback = jest.fn();
+      const originalResponse = event.Records[0].cf.response;
 
-      await handler(event, {}, callback);
+      const response = await handler(event);
 
-      expect(callback).toHaveBeenCalledTimes(1);
-      expect(callback).toHaveBeenCalledWith(null, event.Records[0].cf.response);
+      expect(response).toBe(originalResponse);
     });
   });
 });

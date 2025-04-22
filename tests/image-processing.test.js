@@ -69,11 +69,10 @@ describe('Image Processing Unit Tests', () => {
       uri: '/test-image.jpg',
       querystring: 'width=invalid&height=NaN',
     });
-    const callback = jest.fn();
 
-    await handler(event, {}, callback);
+    const response = await handler(event);
 
-    expect(callback).toHaveBeenCalledTimes(1);
+    expect(response).toBeDefined();
     expect(sharp().resize).toHaveBeenCalledWith({
       width: null,
       height: null,
@@ -91,8 +90,7 @@ describe('Image Processing Unit Tests', () => {
       },
     });
 
-    const callback1 = jest.fn();
-    await handler(highQualityEvent, {}, callback1);
+    await handler(highQualityEvent);
     expect(sharp().webp).toHaveBeenCalledWith({ quality: 100 });
 
     jest.clearAllMocks();
@@ -105,8 +103,7 @@ describe('Image Processing Unit Tests', () => {
       },
     });
 
-    const callback2 = jest.fn();
-    await handler(lowQualityEvent, {}, callback2);
+    await handler(lowQualityEvent);
     expect(sharp().webp).toHaveBeenCalledWith({ quality: 0 });
   });
 
@@ -122,12 +119,10 @@ describe('Image Processing Unit Tests', () => {
 
     const event = createCloudFrontEvent({ uri: '/animated.gif' });
     const originalResponse = event.Records[0].cf.response;
-    const callback = jest.fn();
 
-    await handler(event, {}, callback);
+    const response = await handler(event);
 
-    expect(callback).toHaveBeenCalledTimes(1);
-    expect(callback).toHaveBeenCalledWith(null, originalResponse);
+    expect(response).toBe(originalResponse);
   });
 
   test('should skip processing for unsupported content types', async () => {
@@ -142,26 +137,24 @@ describe('Image Processing Unit Tests', () => {
 
     const event = createCloudFrontEvent({ uri: '/document.pdf' });
     const originalResponse = event.Records[0].cf.response;
-    const callback = jest.fn();
 
-    await handler(event, {}, callback);
+    const response = await handler(event);
 
-    expect(callback).toHaveBeenCalledTimes(1);
-    expect(callback).toHaveBeenCalledWith(null, originalResponse);
+    expect(response).toBe(originalResponse);
   });
 
   test('should handle S3 errors gracefully', async () => {
     mockS3Send.mockRejectedValueOnce(new Error('S3 Error'));
 
     const event = createCloudFrontEvent({ uri: '/test-image.jpg' });
-    const callback = jest.fn();
+    const originalResponse = event.Records[0].cf.response;
 
     const consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
 
-    await handler(event, {}, callback);
+    const response = await handler(event);
 
     expect(consoleLogSpy).toHaveBeenCalled();
-    expect(callback).not.toHaveBeenCalled();
+    expect(response).toBe(originalResponse);
 
     consoleLogSpy.mockRestore();
   });
@@ -173,24 +166,20 @@ describe('Image Processing Unit Tests', () => {
 
     const event = createCloudFrontEvent({ uri: '/large-image.jpg' });
     const originalResponse = event.Records[0].cf.response;
-    const callback = jest.fn();
 
-    await handler(event, {}, callback);
+    const response = await handler(event);
 
-    expect(callback).toHaveBeenCalledTimes(1);
-    expect(callback).toHaveBeenCalledWith(null, originalResponse);
+    expect(response).toBe(originalResponse);
   });
 
   test('should handle malformed S3 domain names', async () => {
     const event = createCloudFrontEvent();
     event.Records[0].cf.request.origin.s3.domainName = 'invalid-domain-format';
     const originalResponse = event.Records[0].cf.response;
-    const callback = jest.fn();
 
-    await handler(event, {}, callback);
+    const response = await handler(event);
 
-    expect(callback).toHaveBeenCalledTimes(1);
-    expect(callback).toHaveBeenCalledWith(null, originalResponse);
+    expect(response).toBe(originalResponse);
   });
 
   test('should set correct content-type header for different transformations', async () => {
@@ -201,10 +190,9 @@ describe('Image Processing Unit Tests', () => {
       },
     });
 
-    const callback1 = jest.fn();
-    await handler(webpEvent, {}, callback1);
+    const response1 = await handler(webpEvent);
 
-    expect(callback1.mock.calls[0][1].headers['content-type']).toEqual([
+    expect(response1.headers['content-type']).toEqual([
       { key: 'Content-Type', value: 'image/webp' },
     ]);
 
@@ -220,11 +208,10 @@ describe('Image Processing Unit Tests', () => {
     });
 
     const gifEvent = createCloudFrontEvent({ uri: '/image.gif' });
-    const callback2 = jest.fn();
 
-    await handler(gifEvent, {}, callback2);
+    const response2 = await handler(gifEvent);
 
-    expect(callback2.mock.calls[0][1].headers['content-type']).toEqual([
+    expect(response2.headers['content-type']).toEqual([
       { key: 'Content-Type', value: 'image/png' },
     ]);
   });
@@ -240,11 +227,9 @@ describe('Image Processing Unit Tests', () => {
 
     const event = createCloudFrontEvent({ uri: '/test-image.jpg' });
     const originalResponse = event.Records[0].cf.response;
-    const callback = jest.fn();
 
-    await handler(event, {}, callback);
+    const response = await handler(event);
 
-    expect(callback).toHaveBeenCalledTimes(1);
-    expect(callback).toHaveBeenCalledWith(null, originalResponse);
+    expect(response).toBe(originalResponse);
   });
 });

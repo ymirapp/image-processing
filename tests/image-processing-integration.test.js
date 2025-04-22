@@ -103,14 +103,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const callback = jest.fn();
-
-    await handler(event, {}, callback);
-
-    expect(callback).toHaveBeenCalledTimes(1);
-    expect(callback).toHaveBeenCalledWith(null, expect.any(Object));
-
-    const response = callback.mock.calls[0][1];
+    const response = await handler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -134,13 +127,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const callback = jest.fn();
-    await handler(event, {}, callback);
-
-    expect(callback).toHaveBeenCalledTimes(1);
-    expect(callback).toHaveBeenCalledWith(null, expect.any(Object));
-
-    const response = callback.mock.calls[0][1];
+    const response = await handler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -166,13 +153,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const callback = jest.fn();
-    await handler(event, {}, callback);
-
-    expect(callback).toHaveBeenCalledTimes(1);
-    expect(callback).toHaveBeenCalledWith(null, expect.any(Object));
-
-    const response = callback.mock.calls[0][1];
+    const response = await handler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -199,13 +180,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const callback = jest.fn();
-    await handler(event, {}, callback);
-
-    expect(callback).toHaveBeenCalledTimes(1);
-    expect(callback).toHaveBeenCalledWith(null, expect.any(Object));
-
-    const response = callback.mock.calls[0][1];
+    const response = await handler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -234,12 +209,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const callback = jest.fn();
-    await handler(event, {}, callback);
-
-    expect(callback).toHaveBeenCalledTimes(1);
-
-    const response = callback.mock.calls[0][1];
+    const response = await handler(event);
 
     expect(response.headers['content-type']).toEqual([
       { key: 'Content-Type', value: 'image/webp' },
@@ -267,12 +237,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const callback = jest.fn();
-    await handler(event, {}, callback);
-
-    expect(callback).toHaveBeenCalledTimes(1);
-
-    const response = callback.mock.calls[0][1];
+    const response = await handler(event);
 
     expect(response.headers['content-type']).toEqual([
       { key: 'Content-Type', value: 'image/webp' },
@@ -297,13 +262,10 @@ describe('Image Processing Integration', () => {
     });
     const originalResponse = event.Records[0].cf.response;
 
-    const callback = jest.fn();
-    await handler(event, {}, callback);
+    const response = await handler(event);
 
-    expect(callback).toHaveBeenCalledTimes(1);
-
-    expect(callback.mock.calls[0][1]).toBe(originalResponse);
-    expect(callback.mock.calls[0][1].bodyEncoding).toBeUndefined();
+    expect(response).toBe(originalResponse);
+    expect(response.bodyEncoding).toBeUndefined();
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
     expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
@@ -318,13 +280,10 @@ describe('Image Processing Integration', () => {
     });
     const originalResponse = event.Records[0].cf.response;
 
-    const callback = jest.fn();
-    await handler(event, {}, callback);
+    const response = await handler(event);
 
-    expect(callback).toHaveBeenCalledTimes(1);
-
-    expect(callback.mock.calls[0][1]).toBe(originalResponse);
-    expect(callback.mock.calls[0][1].bodyEncoding).toBeUndefined();
+    expect(response).toBe(originalResponse);
+    expect(response.bodyEncoding).toBeUndefined();
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
     expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
@@ -341,13 +300,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const callback = jest.fn();
-    await handler(event, {}, callback);
-
-    expect(callback).toHaveBeenCalledTimes(1);
-    expect(callback).toHaveBeenCalledWith(null, expect.any(Object));
-
-    const response = callback.mock.calls[0][1];
+    const response = await handler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -375,13 +328,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const callback = jest.fn();
-    await handler(event, {}, callback);
-
-    expect(callback).toHaveBeenCalledTimes(1);
-    expect(callback).toHaveBeenCalledWith(null, expect.any(Object));
-
-    const response = callback.mock.calls[0][1];
+    const response = await handler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -408,12 +355,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const callback = jest.fn();
-    await handler(event, {}, callback);
-
-    expect(callback).toHaveBeenCalledTimes(1);
-
-    const response = callback.mock.calls[0][1];
+    const response = await handler(event);
 
     expect(response.headers['content-type']).toEqual([
       { key: 'Content-Type', value: 'image/webp' },
