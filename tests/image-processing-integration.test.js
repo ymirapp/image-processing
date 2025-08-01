@@ -49,6 +49,17 @@ describe('Image Processing Integration', () => {
     })
       .gif()
       .toFile(path.join(fixturesDir, 'test-image.gif'));
+
+    await sharp({
+      create: {
+        width: 400,
+        height: 300,
+        channels: 3,
+        background: { r: 0, g: 0, b: 255 },
+      },
+    })
+      .webp()
+      .toFile(path.join(fixturesDir, 'test-image.webp'));
   });
 
   beforeEach(() => {
@@ -72,6 +83,15 @@ describe('Image Processing Integration', () => {
             Body: {
               [Symbol.asyncIterator]: function* () {
                 yield fs.readFileSync(path.join(fixturesDir, 'test-image.gif'));
+              },
+            },
+          };
+        } else if (key === 'test-image.webp') {
+          return {
+            ContentType: 'image/webp',
+            Body: {
+              [Symbol.asyncIterator]: function* () {
+                yield fs.readFileSync(path.join(fixturesDir, 'test-image.webp'));
               },
             },
           };
@@ -365,6 +385,107 @@ describe('Image Processing Integration', () => {
     const metadata = await sharp(responseBuffer).metadata();
 
     expect(metadata.format).toBe('webp');
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
+  });
+
+  test('should process WebP images as input format', async () => {
+    const event = createCloudFrontEvent({
+      uri: '/test-image.webp',
+      region: 'us-west-2',
+      bucket: 'my-test-bucket',
+    });
+
+    const response = await handler(event);
+
+    expect(response.status).toBe('200');
+    expect(response.bodyEncoding).toBe('base64');
+
+    const responseBuffer = Buffer.from(response.body, 'base64');
+    const metadata = await sharp(responseBuffer).metadata();
+
+    expect(metadata.format).toBe('webp');
+    expect(metadata.width).toBe(400);
+    expect(metadata.height).toBe(300);
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
+  });
+
+  test('should resize WebP images', async () => {
+    const event = createCloudFrontEvent({
+      uri: '/test-image.webp',
+      querystring: 'width=200',
+      region: 'us-west-2',
+      bucket: 'my-test-bucket',
+    });
+
+    const response = await handler(event);
+
+    expect(response.status).toBe('200');
+    expect(response.bodyEncoding).toBe('base64');
+
+    const responseBuffer = Buffer.from(response.body, 'base64');
+    const metadata = await sharp(responseBuffer).metadata();
+
+    expect(metadata.format).toBe('webp');
+    expect(metadata.width).toBe(200);
+    expect(metadata.height).toBe(150);
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
+  });
+
+  test('should convert WebP to other formats', async () => {
+    const event = createCloudFrontEvent({
+      uri: '/test-image.webp',
+      querystring: 'format=jpeg',
+      region: 'us-west-2',
+      bucket: 'my-test-bucket',
+    });
+
+    const response = await handler(event);
+
+    expect(response.status).toBe('200');
+    expect(response.bodyEncoding).toBe('base64');
+
+    expect(response.headers['content-type']).toEqual([
+      { key: 'Content-Type', value: 'image/jpeg' },
+    ]);
+
+    const responseBuffer = Buffer.from(response.body, 'base64');
+    const metadata = await sharp(responseBuffer).metadata();
+
+    expect(metadata.format).toBe('jpeg');
+    expect(metadata.width).toBe(400);
+    expect(metadata.height).toBe(300);
+
+    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
+    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
+  });
+
+  test('should resize and convert WebP images simultaneously', async () => {
+    const event = createCloudFrontEvent({
+      uri: '/test-image.webp',
+      querystring: 'width=300&format=png',
+      region: 'us-west-2',
+      bucket: 'my-test-bucket',
+    });
+
+    const response = await handler(event);
+
+    expect(response.status).toBe('200');
+    expect(response.bodyEncoding).toBe('base64');
+
+    expect(response.headers['content-type']).toEqual([{ key: 'Content-Type', value: 'image/png' }]);
+
+    const responseBuffer = Buffer.from(response.body, 'base64');
+    const metadata = await sharp(responseBuffer).metadata();
+
+    expect(metadata.format).toBe('png');
+    expect(metadata.width).toBe(300);
+    expect(metadata.height).toBe(225);
 
     expect(lastS3ClientConfiguration.region).toBe('us-west-2');
     expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');

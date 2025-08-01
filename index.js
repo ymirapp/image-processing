@@ -26,7 +26,7 @@ exports.handler = async (event) => {
       return response;
     }
 
-    const allowedContentTypes = ['image/gif', 'image/jpeg', 'image/png'];
+    const allowedContentTypes = ['image/gif', 'image/jpeg', 'image/png', 'image/webp'];
     const key = decodeURIComponent(request.uri.substring(1));
     const objectResponse = await fetchOriginalImageFromS3(bucketInfo, key);
 

@@ -232,4 +232,57 @@ describe('Image Processing Unit Tests', () => {
 
     expect(response).toBe(originalResponse);
   });
+
+  test('should process WebP images as input format', async () => {
+    const webpBuffer = Buffer.from('fake-webp-data');
+
+    mockS3Send.mockResolvedValueOnce({
+      ContentType: 'image/webp',
+      Body: {
+        [Symbol.asyncIterator]: async function* () {
+          yield webpBuffer;
+        },
+      },
+    });
+
+    const event = createCloudFrontEvent({
+      uri: '/test-image.webp',
+      querystring: 'width=100',
+    });
+
+    const response = await handler(event);
+
+    expect(response.status).toBe('200');
+    expect(response.bodyEncoding).toBe('base64');
+    expect(sharp().resize).toHaveBeenCalledWith({
+      width: 100,
+      height: null,
+      fit: 'inside',
+      withoutEnlargement: true,
+    });
+  });
+
+  test('should convert WebP input to different output format', async () => {
+    const webpBuffer = Buffer.from('fake-webp-data');
+
+    mockS3Send.mockResolvedValueOnce({
+      ContentType: 'image/webp',
+      Body: {
+        [Symbol.asyncIterator]: async function* () {
+          yield webpBuffer;
+        },
+      },
+    });
+
+    const event = createCloudFrontEvent({
+      uri: '/test-image.webp',
+      querystring: 'format=png',
+    });
+
+    const response = await handler(event);
+
+    expect(response.status).toBe('200');
+    expect(response.headers['content-type']).toEqual([{ key: 'Content-Type', value: 'image/png' }]);
+    expect(sharp().png).toHaveBeenCalled();
+  });
 });
