@@ -26,6 +26,8 @@ To build a zip archive of the Lambda function to upload to AWS, you can run the 
 $ npm run build-zip
 ```
 
+The archive is built from a production install of `package-lock.json` with linux x64 binaries, whatever platform you run it on.
+
 ## Links
 
  * [Documentation][2]

@@ -17,7 +17,7 @@
     "prettier": "^3.1.0"
   },
   "scripts": {
-    "build-zip": "rm ymir-image-processing.zip; zip -r ymir-image-processing.zip ./node_modules/ index.js",
+    "build-zip": "scripts/build-zip.sh",
     "calculate-sha": "openssl dgst -sha256 -binary ymir-image-processing.zip | openssl enc -base64",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
