@@ -4,6 +4,19 @@ const animated = require('animated-gif-detector');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const sharp = require('sharp');
 
+// sharp picks its decoder from the bytes, not the S3 content type, so without this an SVG, HEIF or
+// TIFF file stored under an allowed content type reaches that decoder. libvips silently ignores
+// unknown operation names, and the GIF loader is VipsForeignLoadNsgif, not VipsForeignLoadGif.
+sharp.block({ operation: ['VipsForeignLoad'] });
+sharp.unblock({
+  operation: [
+    'VipsForeignLoadJpeg',
+    'VipsForeignLoadNsgif',
+    'VipsForeignLoadPng',
+    'VipsForeignLoadWebp',
+  ],
+});
+
 /**
  * AWS Lambda function that processes images from S3 based on query parameters.
  * Supports resizing, format conversion, and quality adjustments for images.

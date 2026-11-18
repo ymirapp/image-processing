@@ -42,6 +42,16 @@ const QUADRANTS = { topLeft: 'red', topRight: 'green', bottomLeft: 'blue', botto
 const ACCEPT_WEBP = [{ key: 'Accept', value: 'image/webp,image/*' }];
 
 /**
+ * Reads a file from the fixtures directory.
+ *
+ * @param {string} name File name
+ * @return {Buffer} File contents
+ */
+function readFixture(name) {
+  return fs.readFileSync(path.join(__dirname, 'fixtures', name));
+}
+
+/**
  * Creates the CloudFront response the function receives, which it returns when it leaves the
  * image unchanged.
  *
@@ -161,7 +171,7 @@ describe('Image Processing Integration', () => {
     );
 
     for (const [key, contentType] of Object.entries(FIXTURES)) {
-      fakeS3.putObject(key, contentType, fs.readFileSync(path.join(__dirname, 'fixtures', key)));
+      fakeS3.putObject(key, contentType, readFixture(key));
     }
   });
 
@@ -190,11 +200,7 @@ describe('Image Processing Integration', () => {
   });
 
   test('should fetch the object for a URL-encoded key', async () => {
-    fakeS3.putObject(
-      'my photos/café.jpg',
-      'image/jpeg',
-      fs.readFileSync(path.join(__dirname, 'fixtures', 'progressive.jpg')),
-    );
+    fakeS3.putObject('my photos/café.jpg', 'image/jpeg', readFixture('progressive.jpg'));
 
     const response = await invokeHandler(
       createCloudFrontEvent({ uri: '/my%20photos/caf%C3%A9.jpg', querystring: 'width=200' }),
@@ -770,11 +776,14 @@ describe('Image Processing Integration', () => {
 
   describe('when the image cannot be processed', () => {
     beforeAll(async () => {
-      const progressive = fs.readFileSync(path.join(__dirname, 'fixtures', 'progressive.jpg'));
+      const progressive = readFixture('progressive.jpg');
 
       fakeS3.putObject('document.pdf', 'application/pdf', Buffer.from('%PDF-1.4'));
       fakeS3.putObject('no-content-type.jpg', undefined, progressive);
       fakeS3.putObject('corrupt.jpg', 'image/jpeg', Buffer.from('not an image'));
+      fakeS3.putObject('image.svg', 'image/png', readFixture('image.svg'));
+      fakeS3.putObject('image.avif', 'image/webp', readFixture('image.avif'));
+      fakeS3.putObject('image.tiff', 'image/jpeg', readFixture('image.tiff'));
       fakeS3.putObject(
         'noise.png',
         'image/png',
@@ -798,6 +807,9 @@ describe('Image Processing Integration', () => {
       { name: 'an unsupported content type', key: 'document.pdf' },
       { name: 'a missing content type', key: 'no-content-type.jpg' },
       { name: 'a corrupt image', key: 'corrupt.jpg' },
+      { name: 'an SVG stored as a PNG', key: 'image.svg' },
+      { name: 'an AVIF stored as a WebP', key: 'image.avif' },
+      { name: 'a TIFF stored as a JPEG', key: 'image.tiff' },
       { name: 'a missing object', key: 'missing.jpg' },
       { name: 'an output too large for a Lambda@Edge response', key: 'noise.png' },
     ])('returns the original response for $name', async ({ key }) => {
