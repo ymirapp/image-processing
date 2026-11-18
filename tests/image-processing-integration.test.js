@@ -33,6 +33,7 @@ const FIXTURES = {
   'cmyk.jpg': 'image/jpeg',
   'exif-rotated.jpg': 'image/jpeg',
   'photo.jpg': 'image/jpeg',
+  'photo.webp': 'image/webp',
   'progressive.jpg': 'image/jpeg',
   'static.gif': 'image/gif',
 };
@@ -696,6 +697,14 @@ describe('Image Processing Integration', () => {
         contentType: null,
       },
       {
+        name: 'negotiates WebP when the format is unknown',
+        key: 'progressive.jpg',
+        querystring: 'format=tiff',
+        accept: ACCEPT_WEBP,
+        format: 'webp',
+        contentType: 'image/webp',
+      },
+      {
         name: 'keeps the format when the format is unknown',
         key: 'progressive.jpg',
         querystring: 'format=tiff',
@@ -720,47 +729,76 @@ describe('Image Processing Integration', () => {
 
   describe('quality', () => {
     /**
-     * Requests photo.jpg as negotiated WebP with the given query string.
+     * Requests an image with the given query string and Accept header.
      *
+     * @param {string} key Key of the image
      * @param {string} querystring Query string of the request
-     * @return {Promise<Buffer>} The WebP image the function returned
+     * @param {Array|undefined} accept Accept header of the request
+     * @return {Promise<Object>} The image the function returned and its format
      */
-    async function requestWebP(querystring) {
+    async function requestImage(key, querystring, accept) {
       const response = await invokeHandler(
-        createCloudFrontEvent({ uri: '/photo.jpg', querystring, headers: { accept: ACCEPT_WEBP } }),
+        createCloudFrontEvent({ uri: `/${key}`, querystring, headers: accept ? { accept } : {} }),
       );
+      const image = Buffer.from(response.body, 'base64');
 
-      expect(response.headers['content-type']).toEqual([
-        { key: 'Content-Type', value: 'image/webp' },
-      ]);
-
-      return Buffer.from(response.body, 'base64');
+      return { image, format: (await sharp(image).metadata()).format };
     }
 
-    test('encodes negotiated WebP at the requested quality', async () => {
-      const low = await requestWebP('quality=10');
-      const high = await requestWebP('quality=90');
+    test.each([
+      { name: 'negotiated WebP', key: 'photo.jpg', accept: ACCEPT_WEBP, format: 'webp' },
+      { name: 'a JPEG kept as JPEG', key: 'photo.jpg', format: 'jpeg' },
+      { name: 'a WebP kept as WebP', key: 'photo.webp', format: 'webp' },
+      { name: 'format=webp', key: 'photo.jpg', params: 'format=webp', format: 'webp' },
+      { name: 'format=jpg', key: 'photo.webp', params: 'format=jpg', format: 'jpeg' },
+      {
+        name: 'format=original',
+        key: 'photo.jpg',
+        params: 'format=original',
+        accept: ACCEPT_WEBP,
+        format: 'jpeg',
+      },
+    ])('encodes $name at the requested quality', async ({ key, params, accept, format }) => {
+      const prefix = params ? `${params}&` : '';
+      const low = await requestImage(key, `${prefix}quality=10`, accept);
+      const high = await requestImage(key, `${prefix}quality=90`, accept);
 
-      expect(low.length).toBeLessThan(high.length);
+      expect([low.format, high.format]).toEqual([format, format]);
+      expect(low.image.length).toBeLessThan(high.image.length);
     });
 
-    test('defaults to quality 82 when the quality is missing or not a number', async () => {
-      const expected = await requestWebP('quality=82');
+    test('defaults negotiated WebP to quality 82 when the quality is missing, 0 or not a number', async () => {
+      const expected = (await requestImage('photo.jpg', 'quality=82', ACCEPT_WEBP)).image;
 
-      expect(Buffer.compare(await requestWebP(''), expected)).toBe(0);
-      expect(Buffer.compare(await requestWebP('quality=abc'), expected)).toBe(0);
+      for (const querystring of ['', 'quality=0', 'quality=abc']) {
+        const { image } = await requestImage('photo.jpg', querystring, ACCEPT_WEBP);
+
+        expect(Buffer.compare(image, expected)).toBe(0);
+      }
+    });
+
+    test('keeps the JPEG encoder default when the quality is 0 or not a number', async () => {
+      const expected = (await requestImage('photo.jpg', '')).image;
+
+      for (const querystring of ['quality=0', 'quality=abc']) {
+        const { image } = await requestImage('photo.jpg', querystring);
+
+        expect(Buffer.compare(image, expected)).toBe(0);
+      }
     });
 
     test('caps the quality at 100', async () => {
-      const expected = await requestWebP('quality=100');
+      const expected = (await requestImage('photo.jpg', 'quality=100', ACCEPT_WEBP)).image;
+      const { image } = await requestImage('photo.jpg', 'quality=999', ACCEPT_WEBP);
 
-      expect(Buffer.compare(await requestWebP('quality=999'), expected)).toBe(0);
+      expect(Buffer.compare(image, expected)).toBe(0);
     });
 
     test('raises a negative quality to the lowest quality', async () => {
-      const expected = await requestWebP('quality=1');
+      const expected = (await requestImage('photo.jpg', 'quality=1', ACCEPT_WEBP)).image;
+      const { image } = await requestImage('photo.jpg', 'quality=-50', ACCEPT_WEBP);
 
-      expect(Buffer.compare(await requestWebP('quality=-50'), expected)).toBe(0);
+      expect(Buffer.compare(image, expected)).toBe(0);
     });
   });
 

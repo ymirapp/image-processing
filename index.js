@@ -57,13 +57,18 @@ exports.handler = async (event) => {
 
     let contentType = null;
     const image = sharp(objectBody, { autoOrient: true });
+    const { format, pages } = await image.metadata();
 
-    if (1 < (await image.metadata()).pages) {
+    if (1 < pages) {
       return response;
     }
 
     if (!preserveOriginalFormat) {
       contentType = await processImageFormat(image, objectResponse, request, params, formatParam);
+    }
+
+    if (!contentType) {
+      applyOriginalFormatQuality(image, format, params);
     }
 
     if (params.has('width') || params.has('height')) {
@@ -139,10 +144,10 @@ function fetchOriginalImageFromS3(bucketInfo, key) {
  * @returns {Array|null} Content-Type header array or null if no change
  */
 function processImageFormat(image, objectResponse, request, params, formatSetting) {
-  let contentType = null;
+  let contentType = formatSetting ? applyExplicitFormat(image, formatSetting, params) : null;
 
-  if (formatSetting && formatSetting !== 'auto') {
-    return applyExplicitFormat(image, formatSetting);
+  if (contentType) {
+    return contentType;
   }
 
   if ('image/gif' === objectResponse.ContentType) {
@@ -151,8 +156,7 @@ function processImageFormat(image, objectResponse, request, params, formatSettin
   }
 
   if (request.headers['accept'] && request.headers['accept'][0].value.match('image/webp')) {
-    const quality = calculateQuality(params);
-    image.webp({ quality });
+    image.webp({ quality: requestedQuality(params) ?? 82 });
     contentType = [{ key: 'Content-Type', value: 'image/webp' }];
   }
 
@@ -164,19 +168,20 @@ function processImageFormat(image, objectResponse, request, params, formatSettin
  *
  * @param {Object} image - Sharp image object
  * @param {string} formatSetting - Format parameter from query string
+ * @param {URLSearchParams} params - URL query parameters
  * @returns {Array|null} Content-Type header array or null if format is not recognized
  */
-function applyExplicitFormat(image, formatSetting) {
+function applyExplicitFormat(image, formatSetting, params) {
   switch (formatSetting.toLowerCase()) {
     case 'webp':
-      image.webp();
+      image.webp({ quality: requestedQuality(params) });
       return [{ key: 'Content-Type', value: 'image/webp' }];
     case 'png':
       image.png();
       return [{ key: 'Content-Type', value: 'image/png' }];
     case 'jpeg':
     case 'jpg':
-      image.jpeg();
+      image.jpeg({ quality: requestedQuality(params) });
       return [{ key: 'Content-Type', value: 'image/jpeg' }];
     default:
       return null;
@@ -184,15 +189,34 @@ function applyExplicitFormat(image, formatSetting) {
 }
 
 /**
- * Calculates the quality setting for image compression.
- * Defaults to 82 if not specified, and ensures quality is between 1 and 100.
+ * Applies the requested quality to an image kept in its original JPEG or WebP format.
+ *
+ * @param {Object} image - Sharp image object
+ * @param {string} format - Format of the original image
+ * @param {URLSearchParams} params - URL query parameters
+ * @returns {void}
+ */
+function applyOriginalFormatQuality(image, format, params) {
+  if ('jpeg' === format) {
+    image.jpeg({ quality: requestedQuality(params) });
+  }
+
+  if ('webp' === format) {
+    image.webp({ quality: requestedQuality(params) });
+  }
+}
+
+/**
+ * Returns the quality requested in the query string, limited to between 1 and 100. A missing,
+ * non-numeric or zero quality returns undefined so the encoder uses its default.
  *
  * @param {URLSearchParams} params - URL query parameters
- * @returns {number} Quality value (1-100)
+ * @returns {number|undefined} Quality value (1-100)
  */
-function calculateQuality(params) {
-  const rawQuality = parseInt(params.get('quality'), 10) || 82;
-  return Math.round(Math.min(Math.max(rawQuality, 1), 100));
+function requestedQuality(params) {
+  const quality = parseInt(params.get('quality'), 10);
+
+  return quality ? Math.min(Math.max(quality, 1), 100) : undefined;
 }
 
 /**
