@@ -172,14 +172,14 @@ function applyExplicitFormat(image, formatSetting) {
 
 /**
  * Calculates the quality setting for image compression.
- * Defaults to 82 if not specified, and ensures quality is between 0 and 100.
+ * Defaults to 82 if not specified, and ensures quality is between 1 and 100.
  *
  * @param {URLSearchParams} params - URL query parameters
- * @returns {number} Quality value (0-100)
+ * @returns {number} Quality value (1-100)
  */
 function calculateQuality(params) {
   const rawQuality = parseInt(params.get('quality'), 10) || 82;
-  return Math.round(Math.min(Math.max(rawQuality, 0), 100));
+  return Math.round(Math.min(Math.max(rawQuality, 1), 100));
 }
 
 /**

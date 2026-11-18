@@ -723,10 +723,6 @@ describe('Image Processing Integration', () => {
   });
 
   describe('quality', () => {
-    afterEach(() => {
-      jest.restoreAllMocks();
-    });
-
     /**
      * Requests photo.jpg as negotiated WebP with the given query string.
      *
@@ -765,12 +761,7 @@ describe('Image Processing Integration', () => {
       expect(Buffer.compare(await requestWebP('quality=999'), expected)).toBe(0);
     });
 
-    // Known bug: calculateQuality() clamps to 0, but sharp only accepts 1 to 100, so a negative
-    // quality makes sharp throw and the original image is served. Change test.failing to test
-    // once the bug is fixed.
-    test.failing('raises a negative quality to the lowest quality', async () => {
-      jest.spyOn(console, 'log').mockImplementation(() => {});
-
+    test('raises a negative quality to the lowest quality', async () => {
       const expected = await requestWebP('quality=1');
 
       expect(Buffer.compare(await requestWebP('quality=-50'), expected)).toBe(0);
