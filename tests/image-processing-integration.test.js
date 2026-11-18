@@ -612,18 +612,10 @@ describe('Image Processing Integration', () => {
       expect(await coloursAtCorners(image)).toEqual(QUADRANTS);
     });
 
-    // Known bug: only animated GIFs skip processing, so animated WebP images are served as their
-    // first frame. Change test.failing to test once the bug is fixed.
-    test.failing('keeps every frame of an animated WebP', async () => {
+    test('returns an animated WebP unchanged', async () => {
       const response = await invokeHandler(createCloudFrontEvent({ uri: '/animated.webp' }));
 
-      if (undefined === response.body) {
-        return;
-      }
-
-      const metadata = await sharp(Buffer.from(response.body, 'base64')).metadata();
-
-      expect(metadata.pages).toBe(5);
+      expect(response).toEqual(originalResponse());
     });
   });
 

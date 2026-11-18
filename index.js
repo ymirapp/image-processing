@@ -1,6 +1,5 @@
 'use strict';
 
-const animated = require('animated-gif-detector');
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const sharp = require('sharp');
 
@@ -52,15 +51,16 @@ exports.handler = async (event) => {
     const formatParam = params.get('format');
     const preserveOriginalFormat = formatParam === 'original';
 
-    if (
-      'image/gif' === objectResponse.ContentType &&
-      (animated(objectBody) || preserveOriginalFormat)
-    ) {
+    if ('image/gif' === objectResponse.ContentType && preserveOriginalFormat) {
       return response;
     }
 
     let contentType = null;
     const image = sharp(objectBody, { autoOrient: true });
+
+    if (1 < (await image.metadata()).pages) {
+      return response;
+    }
 
     if (!preserveOriginalFormat) {
       contentType = await processImageFormat(image, objectResponse, request, params, formatParam);

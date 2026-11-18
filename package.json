@@ -6,7 +6,6 @@
   "license": "MIT",
   "main": "index.js",
   "dependencies": {
-    "animated-gif-detector": "^1.2.0",
     "sharp": "^0.35.5"
   },
   "devDependencies": {
