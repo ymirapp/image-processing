@@ -8,11 +8,6 @@ module.exports = {
   parserOptions: {
     ecmaVersion: 2020,
   },
-  globals: {
-    lastS3ClientConfiguration: 'writable',
-    lastS3GetObjectCommandInput: 'writable',
-    mockS3Send: 'writable',
-  },
   rules: {
     // General code quality
     'no-var': 'error',

@@ -28,6 +28,20 @@ $ npm run build-zip
 
 The archive is built from a production install of `package-lock.json` with linux x64 binaries, whatever platform you run it on.
 
+## Testing
+
+Run the unit and integration tests:
+
+```
+$ npm test
+```
+
+Run the integration tests against the built zip in the AWS Lambda Node.js 22 image (requires Docker):
+
+```
+$ npm run test:artifact
+```
+
 ## Links
 
  * [Documentation][2]

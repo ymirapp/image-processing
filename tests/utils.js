@@ -1,8 +1,5 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-
 /**
  * Creates CloudFront event data for testing.
  *
@@ -55,19 +52,31 @@ function createCloudFrontEvent(options = {}) {
 }
 
 /**
- * Ensures fixtures directory exists.
+ * Invokes the image processing function with the given CloudFront event. Calls the handler in
+ * this process, or the deployed artifact over HTTP when IMAGE_PROCESSING_FUNCTION_URL is set.
+ *
+ * @param {Object} event CloudFront event data
+ * @return {Promise<Object>} CloudFront response returned by the function
  */
-function ensureFixturesDirectory() {
-  const fixturesDir = path.join(__dirname, 'fixtures');
+async function invokeHandler(event) {
+  const url = process.env.IMAGE_PROCESSING_FUNCTION_URL;
 
-  if (!fs.existsSync(fixturesDir)) {
-    fs.mkdirSync(fixturesDir, { recursive: true });
+  if (!url) {
+    return require('../index').handler(event);
   }
 
-  return fixturesDir;
+  const response = await fetch(url, { method: 'POST', body: JSON.stringify(event) });
+
+  if (!response.ok) {
+    throw new Error(
+      `Invoking ${url} failed with status ${response.status}: ${await response.text()}`,
+    );
+  }
+
+  return response.json();
 }
 
 module.exports = {
   createCloudFrontEvent,
-  ensureFixturesDirectory,
+  invokeHandler,
 };

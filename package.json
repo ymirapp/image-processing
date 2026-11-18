@@ -24,6 +24,7 @@
     "lint": "eslint --fix .",
     "lint:check": "eslint .",
     "test": "jest",
+    "test:artifact": "scripts/test-artifact.sh",
     "test:watch": "jest --watch",
     "update": "npm update --os=linux --cpu=x64"
   }

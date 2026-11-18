@@ -21,99 +21,99 @@
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
-const { createCloudFrontEvent, ensureFixturesDirectory } = require('./utils');
+const { startFakeS3 } = require('./fake-s3');
+const { createCloudFrontEvent, invokeHandler } = require('./utils');
 
 describe('Image Processing Integration', () => {
-  const fixturesDir = ensureFixturesDirectory();
-  let handler;
+  const originalEnvironment = process.env;
+  let fakeS3;
 
   beforeAll(async () => {
-    await sharp({
-      create: {
-        width: 300,
-        height: 200,
-        channels: 3,
-        background: { r: 255, g: 0, b: 0 },
-      },
-    })
-      .jpeg()
-      .toFile(path.join(fixturesDir, 'test-image.jpg'));
+    fakeS3 = await startFakeS3(parseInt(process.env.FAKE_S3_PORT, 10) || 0);
 
-    await sharp({
-      create: {
-        width: 200,
-        height: 200,
-        channels: 3,
-        background: { r: 0, g: 255, b: 0 },
-      },
-    })
-      .gif()
-      .toFile(path.join(fixturesDir, 'test-image.gif'));
+    if (!process.env.IMAGE_PROCESSING_FUNCTION_URL) {
+      process.env = {
+        ...originalEnvironment,
+        AWS_ENDPOINT_URL_S3: `http://127.0.0.1:${fakeS3.port}`,
+        AWS_ACCESS_KEY_ID: 'test',
+        AWS_SECRET_ACCESS_KEY: 'test',
+      };
+    }
 
-    await sharp({
-      create: {
-        width: 400,
-        height: 300,
-        channels: 3,
-        background: { r: 0, g: 0, b: 255 },
-      },
-    })
-      .webp()
-      .toFile(path.join(fixturesDir, 'test-image.webp'));
+    fakeS3.putObject(
+      'test-image.jpg',
+      'image/jpeg',
+      await sharp({
+        create: {
+          width: 300,
+          height: 200,
+          channels: 3,
+          background: { r: 255, g: 0, b: 0 },
+        },
+      })
+        .jpeg()
+        .toBuffer(),
+    );
+
+    fakeS3.putObject(
+      'test-image.gif',
+      'image/gif',
+      await sharp({
+        create: {
+          width: 200,
+          height: 200,
+          channels: 3,
+          background: { r: 0, g: 255, b: 0 },
+        },
+      })
+        .gif()
+        .toBuffer(),
+    );
+
+    fakeS3.putObject(
+      'test-image.webp',
+      'image/webp',
+      await sharp({
+        create: {
+          width: 400,
+          height: 300,
+          channels: 3,
+          background: { r: 0, g: 0, b: 255 },
+        },
+      })
+        .webp()
+        .toBuffer(),
+    );
+
+    fakeS3.putObject(
+      'animated.gif',
+      'image/gif',
+      fs.readFileSync(path.join(__dirname, 'fixtures', 'animated.gif')),
+    );
   });
 
   beforeEach(() => {
-    jest.resetModules();
-
-    mockS3Send.mockImplementation((command) => {
-      if (command.constructor.name === 'GetObjectCommand') {
-        const key = command.Key;
-        if (key === 'test-image.jpg') {
-          return {
-            ContentType: 'image/jpeg',
-            Body: {
-              [Symbol.asyncIterator]: function* () {
-                yield fs.readFileSync(path.join(fixturesDir, 'test-image.jpg'));
-              },
-            },
-          };
-        } else if (key === 'test-image.gif') {
-          return {
-            ContentType: 'image/gif',
-            Body: {
-              [Symbol.asyncIterator]: function* () {
-                yield fs.readFileSync(path.join(fixturesDir, 'test-image.gif'));
-              },
-            },
-          };
-        } else if (key === 'test-image.webp') {
-          return {
-            ContentType: 'image/webp',
-            Body: {
-              [Symbol.asyncIterator]: function* () {
-                yield fs.readFileSync(path.join(fixturesDir, 'test-image.webp'));
-              },
-            },
-          };
-        } else if (key === 'animated.gif') {
-          return {
-            ContentType: 'image/gif',
-            Body: {
-              [Symbol.asyncIterator]: function* () {
-                yield fs.readFileSync(path.join(fixturesDir, 'animated.gif'));
-              },
-            },
-          };
-        }
-      }
-      throw new Error(`Unexpected command or key: ${command.constructor.name}, ${command.Key}`);
-    });
-
-    handler = require('../index').handler;
+    fakeS3.requests.splice(0);
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
+  afterAll(async () => {
+    process.env = originalEnvironment;
+
+    await fakeS3.close();
+  });
+
+  test('should fetch the original image from the bucket and region in the origin domain', async () => {
+    await invokeHandler(
+      createCloudFrontEvent({
+        uri: '/test-image.jpg',
+        region: 'us-west-2',
+        bucket: 'my-test-bucket',
+      }),
+    );
+
+    expect(fakeS3.requests).toEqual([
+      { bucket: 'my-test-bucket', key: 'test-image.jpg', region: 'us-west-2' },
+    ]);
   });
 
   test('should process a simple JPEG without transformations', async () => {
@@ -123,7 +123,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -134,9 +134,6 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('jpeg');
     expect(metadata.width).toBe(300);
     expect(metadata.height).toBe(200);
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should resize JPEG image with width parameter', async () => {
@@ -147,7 +144,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -158,9 +155,6 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('jpeg');
     expect(metadata.width).toBe(150);
     expect(metadata.height).toBe(100);
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should convert to WebP when Accept header includes webp', async () => {
@@ -173,7 +167,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -188,9 +182,6 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('webp');
     expect(metadata.width).toBe(300);
     expect(metadata.height).toBe(200);
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should convert GIF to PNG format', async () => {
@@ -200,7 +191,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -213,9 +204,6 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('png');
     expect(metadata.width).toBe(200);
     expect(metadata.height).toBe(200);
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should apply custom quality when parameter is provided', async () => {
@@ -229,7 +217,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.headers['content-type']).toEqual([
       { key: 'Content-Type', value: 'image/webp' },
@@ -241,9 +229,6 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('webp');
     expect(metadata.width).toBe(300);
     expect(metadata.height).toBe(200);
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should combine multiple transformations', async () => {
@@ -257,7 +242,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.headers['content-type']).toEqual([
       { key: 'Content-Type', value: 'image/webp' },
@@ -269,9 +254,6 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('webp');
     expect(metadata.width).toBe(250);
     expect(metadata.height).toBe(Math.round(200 * (250 / 300)));
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should not process animated GIFs', async () => {
@@ -280,15 +262,10 @@ describe('Image Processing Integration', () => {
       region: 'us-west-2',
       bucket: 'my-test-bucket',
     });
-    const originalResponse = event.Records[0].cf.response;
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
-    expect(response).toBe(originalResponse);
-    expect(response.bodyEncoding).toBeUndefined();
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
+    expect(response).toEqual(createCloudFrontEvent().Records[0].cf.response);
   });
 
   test('should not process a GIF when format=original is specified', async () => {
@@ -298,15 +275,10 @@ describe('Image Processing Integration', () => {
       region: 'us-west-2',
       bucket: 'my-test-bucket',
     });
-    const originalResponse = event.Records[0].cf.response;
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
-    expect(response).toBe(originalResponse);
-    expect(response.bodyEncoding).toBeUndefined();
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
+    expect(response).toEqual(createCloudFrontEvent().Records[0].cf.response);
   });
 
   test('should preserve original JPEG format when format=original is specified, even with WebP Accept header', async () => {
@@ -320,7 +292,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -332,9 +304,6 @@ describe('Image Processing Integration', () => {
     const metadata = await sharp(responseBuffer).metadata();
 
     expect(metadata.format).toBe('jpeg');
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should preserve original JPEG format when format=original is specified with resize parameters, even with WebP Accept header', async () => {
@@ -348,7 +317,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -362,9 +331,6 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('jpeg');
     expect(metadata.width).toBe(150);
     expect(metadata.height).toBe(100);
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should force conversion to specific format when explicitly requested', async () => {
@@ -375,7 +341,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.headers['content-type']).toEqual([
       { key: 'Content-Type', value: 'image/webp' },
@@ -385,9 +351,6 @@ describe('Image Processing Integration', () => {
     const metadata = await sharp(responseBuffer).metadata();
 
     expect(metadata.format).toBe('webp');
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should process WebP images as input format', async () => {
@@ -397,7 +360,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -408,9 +371,6 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('webp');
     expect(metadata.width).toBe(400);
     expect(metadata.height).toBe(300);
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should resize WebP images', async () => {
@@ -421,7 +381,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -432,9 +392,6 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('webp');
     expect(metadata.width).toBe(200);
     expect(metadata.height).toBe(150);
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should convert WebP to other formats', async () => {
@@ -445,7 +402,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -460,9 +417,6 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('jpeg');
     expect(metadata.width).toBe(400);
     expect(metadata.height).toBe(300);
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 
   test('should resize and convert WebP images simultaneously', async () => {
@@ -473,7 +427,7 @@ describe('Image Processing Integration', () => {
       bucket: 'my-test-bucket',
     });
 
-    const response = await handler(event);
+    const response = await invokeHandler(event);
 
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
@@ -486,8 +440,5 @@ describe('Image Processing Integration', () => {
     expect(metadata.format).toBe('png');
     expect(metadata.width).toBe(300);
     expect(metadata.height).toBe(225);
-
-    expect(lastS3ClientConfiguration.region).toBe('us-west-2');
-    expect(lastS3GetObjectCommandInput.Bucket).toBe('my-test-bucket');
   });
 });
