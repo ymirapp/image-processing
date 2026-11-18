@@ -18,6 +18,7 @@
  * they provide confidence that the image processing delivers the expected results.
  */
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
@@ -31,11 +32,24 @@ const FIXTURES = {
   'animated.webp': 'image/webp',
   'cmyk.jpg': 'image/jpeg',
   'exif-rotated.jpg': 'image/jpeg',
+  'photo.jpg': 'image/jpeg',
   'progressive.jpg': 'image/jpeg',
   'static.gif': 'image/gif',
 };
 
 const QUADRANTS = { topLeft: 'red', topRight: 'green', bottomLeft: 'blue', bottomRight: 'white' };
+
+const ACCEPT_WEBP = [{ key: 'Accept', value: 'image/webp,image/*' }];
+
+/**
+ * Creates the CloudFront response the function receives, which it returns when it leaves the
+ * image unchanged.
+ *
+ * @return {Object} CloudFront response
+ */
+function originalResponse() {
+  return createCloudFrontEvent().Records[0].cf.response;
+}
 
 /**
  * Names the colour of the pixel 10% in from the given corner of an image, tolerating the colour
@@ -175,6 +189,22 @@ describe('Image Processing Integration', () => {
     ]);
   });
 
+  test('should fetch the object for a URL-encoded key', async () => {
+    fakeS3.putObject(
+      'my photos/café.jpg',
+      'image/jpeg',
+      fs.readFileSync(path.join(__dirname, 'fixtures', 'progressive.jpg')),
+    );
+
+    const response = await invokeHandler(
+      createCloudFrontEvent({ uri: '/my%20photos/caf%C3%A9.jpg', querystring: 'width=200' }),
+    );
+    const metadata = await sharp(Buffer.from(response.body, 'base64')).metadata();
+
+    expect(fakeS3.requests.map((request) => request.key)).toEqual(['my photos/café.jpg']);
+    expect([metadata.width, metadata.height]).toEqual([200, 150]);
+  });
+
   test('should process a simple JPEG without transformations', async () => {
     const event = createCloudFrontEvent({
       uri: '/test-image.jpg',
@@ -265,31 +295,6 @@ describe('Image Processing Integration', () => {
     expect(metadata.height).toBe(200);
   });
 
-  test('should apply custom quality when parameter is provided', async () => {
-    const event = createCloudFrontEvent({
-      uri: '/test-image.jpg',
-      querystring: 'quality=30',
-      headers: {
-        accept: [{ key: 'Accept', value: 'image/webp,image/*' }],
-      },
-      region: 'us-west-2',
-      bucket: 'my-test-bucket',
-    });
-
-    const response = await invokeHandler(event);
-
-    expect(response.headers['content-type']).toEqual([
-      { key: 'Content-Type', value: 'image/webp' },
-    ]);
-
-    const responseBuffer = Buffer.from(response.body, 'base64');
-    const metadata = await sharp(responseBuffer).metadata();
-
-    expect(metadata.format).toBe('webp');
-    expect(metadata.width).toBe(300);
-    expect(metadata.height).toBe(200);
-  });
-
   test('should combine multiple transformations', async () => {
     const event = createCloudFrontEvent({
       uri: '/test-image.jpg',
@@ -324,7 +329,7 @@ describe('Image Processing Integration', () => {
 
     const response = await invokeHandler(event);
 
-    expect(response).toEqual(createCloudFrontEvent().Records[0].cf.response);
+    expect(response).toEqual(originalResponse());
   });
 
   test('should not process a GIF when format=original is specified', async () => {
@@ -337,7 +342,7 @@ describe('Image Processing Integration', () => {
 
     const response = await invokeHandler(event);
 
-    expect(response).toEqual(createCloudFrontEvent().Records[0].cf.response);
+    expect(response).toEqual(originalResponse());
   });
 
   test('should preserve original JPEG format when format=original is specified, even with WebP Accept header', async () => {
@@ -356,8 +361,7 @@ describe('Image Processing Integration', () => {
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
 
-    expect(response.headers['content-type']).toBeDefined();
-    expect(response.headers['content-type'][0].value).toBe('image/jpeg');
+    expect(response.headers).toEqual(originalResponse().headers);
 
     const responseBuffer = Buffer.from(response.body, 'base64');
     const metadata = await sharp(responseBuffer).metadata();
@@ -381,8 +385,7 @@ describe('Image Processing Integration', () => {
     expect(response.status).toBe('200');
     expect(response.bodyEncoding).toBe('base64');
 
-    expect(response.headers['content-type']).toBeDefined();
-    expect(response.headers['content-type'][0].value).toBe('image/jpeg');
+    expect(response.headers).toEqual(originalResponse().headers);
 
     const responseBuffer = Buffer.from(response.body, 'base64');
     const metadata = await sharp(responseBuffer).metadata();
@@ -502,8 +505,6 @@ describe('Image Processing Integration', () => {
   });
 
   describe('with real-world images', () => {
-    const WEBP = [{ key: 'Accept', value: 'image/webp,image/*' }];
-
     test.each([
       {
         name: 'resizes a progressive JPEG',
@@ -516,7 +517,7 @@ describe('Image Processing Integration', () => {
       {
         name: 'converts a progressive JPEG to WebP',
         key: 'progressive.jpg',
-        accept: WEBP,
+        accept: ACCEPT_WEBP,
         format: 'webp',
         size: [400, 300],
         corners: QUADRANTS,
@@ -532,7 +533,7 @@ describe('Image Processing Integration', () => {
       {
         name: 'converts a CMYK JPEG to WebP',
         key: 'cmyk.jpg',
-        accept: WEBP,
+        accept: ACCEPT_WEBP,
         format: 'webp',
         size: [400, 300],
         corners: QUADRANTS,
@@ -553,7 +554,7 @@ describe('Image Processing Integration', () => {
       {
         name: 'keeps the transparency of a PNG when converting it to WebP',
         key: 'alpha.png',
-        accept: WEBP,
+        accept: ACCEPT_WEBP,
         format: 'webp',
         size: [400, 300],
         corners: {
@@ -573,7 +574,7 @@ describe('Image Processing Integration', () => {
       {
         name: 'converts a palette GIF to WebP',
         key: 'static.gif',
-        accept: WEBP,
+        accept: ACCEPT_WEBP,
         format: 'webp',
         size: [400, 300],
         corners: QUADRANTS,
@@ -619,6 +620,209 @@ describe('Image Processing Integration', () => {
       const metadata = await sharp(Buffer.from(response.body, 'base64')).metadata();
 
       expect(metadata.pages).toBe(5);
+    });
+  });
+
+  describe('resizing', () => {
+    test.each([
+      { name: 'resizes to a height', querystring: 'height=150', size: [200, 150] },
+      {
+        name: 'fits the image inside a width and height',
+        querystring: 'height=100&width=100',
+        size: [100, 75],
+      },
+      {
+        name: 'crops a WordPress thumbnail to the exact size',
+        querystring: 'height=150&width=150&cropped',
+        size: [150, 150],
+      },
+      {
+        name: 'crops from the centre',
+        querystring: 'height=300&width=100&cropped',
+        size: [100, 300],
+      },
+      { name: 'never enlarges the image', querystring: 'width=1000', size: [400, 300] },
+      {
+        name: 'ignores dimensions that are not numbers',
+        querystring: 'width=abc&height=NaN',
+        size: [400, 300],
+      },
+      { name: 'ignores a width of 0', querystring: 'width=0', size: [400, 300] },
+    ])('$name', async ({ querystring, size }) => {
+      const response = await invokeHandler(
+        createCloudFrontEvent({ uri: '/progressive.jpg', querystring }),
+      );
+      const image = Buffer.from(response.body, 'base64');
+      const metadata = await sharp(image).metadata();
+
+      expect(metadata.format).toBe('jpeg');
+      expect([metadata.width, metadata.height]).toEqual(size);
+      expect(await coloursAtCorners(image)).toEqual(QUADRANTS);
+    });
+  });
+
+  describe('output format', () => {
+    test.each([
+      {
+        name: 'converts to JPEG with format=jpg',
+        key: 'static.gif',
+        querystring: 'format=jpg',
+        format: 'jpeg',
+        contentType: 'image/jpeg',
+      },
+      {
+        name: 'accepts an uppercase format',
+        key: 'progressive.jpg',
+        querystring: 'format=PNG',
+        format: 'png',
+        contentType: 'image/png',
+      },
+      {
+        name: 'converts to WebP with format=webp without a WebP Accept header',
+        key: 'static.gif',
+        querystring: 'format=webp',
+        format: 'webp',
+        contentType: 'image/webp',
+      },
+      {
+        name: 'negotiates WebP with format=auto',
+        key: 'progressive.jpg',
+        querystring: 'format=auto',
+        accept: ACCEPT_WEBP,
+        format: 'webp',
+        contentType: 'image/webp',
+      },
+      {
+        name: 'keeps the format when the Accept header has no WebP',
+        key: 'progressive.jpg',
+        accept: [{ key: 'Accept', value: 'image/avif,image/*' }],
+        format: 'jpeg',
+        contentType: null,
+      },
+      {
+        name: 'keeps the format when the format is unknown',
+        key: 'progressive.jpg',
+        querystring: 'format=tiff',
+        format: 'jpeg',
+        contentType: null,
+      },
+    ])('$name', async ({ key, querystring, accept, format, contentType }) => {
+      const response = await invokeHandler(
+        createCloudFrontEvent({ uri: `/${key}`, querystring, headers: accept ? { accept } : {} }),
+      );
+      const image = Buffer.from(response.body, 'base64');
+
+      expect((await sharp(image).metadata()).format).toBe(format);
+      expect(await coloursAtCorners(image)).toEqual(QUADRANTS);
+      expect(response.headers).toEqual(
+        contentType
+          ? { 'content-type': [{ key: 'Content-Type', value: contentType }] }
+          : originalResponse().headers,
+      );
+    });
+  });
+
+  describe('quality', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    /**
+     * Requests photo.jpg as negotiated WebP with the given query string.
+     *
+     * @param {string} querystring Query string of the request
+     * @return {Promise<Buffer>} The WebP image the function returned
+     */
+    async function requestWebP(querystring) {
+      const response = await invokeHandler(
+        createCloudFrontEvent({ uri: '/photo.jpg', querystring, headers: { accept: ACCEPT_WEBP } }),
+      );
+
+      expect(response.headers['content-type']).toEqual([
+        { key: 'Content-Type', value: 'image/webp' },
+      ]);
+
+      return Buffer.from(response.body, 'base64');
+    }
+
+    test('encodes negotiated WebP at the requested quality', async () => {
+      const low = await requestWebP('quality=10');
+      const high = await requestWebP('quality=90');
+
+      expect(low.length).toBeLessThan(high.length);
+    });
+
+    test('defaults to quality 82 when the quality is missing or not a number', async () => {
+      const expected = await requestWebP('quality=82');
+
+      expect(Buffer.compare(await requestWebP(''), expected)).toBe(0);
+      expect(Buffer.compare(await requestWebP('quality=abc'), expected)).toBe(0);
+    });
+
+    test('caps the quality at 100', async () => {
+      const expected = await requestWebP('quality=100');
+
+      expect(Buffer.compare(await requestWebP('quality=999'), expected)).toBe(0);
+    });
+
+    // Known bug: calculateQuality() clamps to 0, but sharp only accepts 1 to 100, so a negative
+    // quality makes sharp throw and the original image is served. Change test.failing to test
+    // once the bug is fixed.
+    test.failing('raises a negative quality to the lowest quality', async () => {
+      jest.spyOn(console, 'log').mockImplementation(() => {});
+
+      const expected = await requestWebP('quality=1');
+
+      expect(Buffer.compare(await requestWebP('quality=-50'), expected)).toBe(0);
+    });
+  });
+
+  describe('when the image cannot be processed', () => {
+    beforeAll(async () => {
+      const progressive = fs.readFileSync(path.join(__dirname, 'fixtures', 'progressive.jpg'));
+
+      fakeS3.putObject('document.pdf', 'application/pdf', Buffer.from('%PDF-1.4'));
+      fakeS3.putObject('no-content-type.jpg', undefined, progressive);
+      fakeS3.putObject('corrupt.jpg', 'image/jpeg', Buffer.from('not an image'));
+      fakeS3.putObject(
+        'noise.png',
+        'image/png',
+        await sharp(crypto.randomBytes(1000 * 1000 * 3), {
+          raw: { width: 1000, height: 1000, channels: 3 },
+        })
+          .png()
+          .toBuffer(),
+      );
+    });
+
+    beforeEach(() => {
+      jest.spyOn(console, 'log').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    test.each([
+      { name: 'an unsupported content type', key: 'document.pdf' },
+      { name: 'a missing content type', key: 'no-content-type.jpg' },
+      { name: 'a corrupt image', key: 'corrupt.jpg' },
+      { name: 'a missing object', key: 'missing.jpg' },
+      { name: 'an output too large for a Lambda@Edge response', key: 'noise.png' },
+    ])('returns the original response for $name', async ({ key }) => {
+      const response = await invokeHandler(createCloudFrontEvent({ uri: `/${key}` }));
+
+      expect(response).toEqual(originalResponse());
+    });
+
+    test('processes a large image once resizing makes its output small enough', async () => {
+      const response = await invokeHandler(
+        createCloudFrontEvent({ uri: '/noise.png', querystring: 'width=300' }),
+      );
+      const metadata = await sharp(Buffer.from(response.body, 'base64')).metadata();
+
+      expect(metadata.format).toBe('png');
+      expect([metadata.width, metadata.height]).toEqual([300, 300]);
     });
   });
 });
