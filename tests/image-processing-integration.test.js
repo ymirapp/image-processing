@@ -601,9 +601,7 @@ describe('Image Processing Integration', () => {
       expect(await coloursAtCorners(image)).toEqual(corners);
     });
 
-    // Known bug: the handler never calls rotate(), so the EXIF orientation is dropped and portrait
-    // photos are served sideways. Change test.failing to test once the bug is fixed.
-    test.failing('serves an EXIF-rotated JPEG upright', async () => {
+    test('serves an EXIF-rotated JPEG upright', async () => {
       const response = await invokeHandler(
         createCloudFrontEvent({ uri: '/exif-rotated.jpg', querystring: 'width=150' }),
       );

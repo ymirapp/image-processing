@@ -60,7 +60,7 @@ exports.handler = async (event) => {
     }
 
     let contentType = null;
-    const image = sharp(objectBody);
+    const image = sharp(objectBody, { autoOrient: true });
 
     if (!preserveOriginalFormat) {
       contentType = await processImageFormat(image, objectResponse, request, params, formatParam);
