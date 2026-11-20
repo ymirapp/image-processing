@@ -17,6 +17,16 @@ sharp.unblock({
 });
 
 /**
+ * Content types of the images the function processes.
+ */
+const ALLOWED_CONTENT_TYPES = ['image/gif', 'image/jpeg', 'image/png', 'image/webp'];
+
+/**
+ * S3 clients keyed by region, kept across invocations so a warm container reuses its connections.
+ */
+const s3Clients = new Map();
+
+/**
  * AWS Lambda function that processes images from S3 based on query parameters.
  * Supports resizing, format conversion, and quality adjustments for images.
  *
@@ -28,7 +38,14 @@ exports.handler = async (event) => {
     const request = event.Records[0].cf.request;
     const response = event.Records[0].cf.response;
 
-    if ('200' !== response.status || !isCloudFrontRequestValid(request)) {
+    const responseContentType =
+      response.headers['content-type'] && response.headers['content-type'][0].value;
+
+    if (
+      '200' !== response.status ||
+      !ALLOWED_CONTENT_TYPES.includes(responseContentType) ||
+      !isCloudFrontRequestValid(request)
+    ) {
       return response;
     }
 
@@ -38,26 +55,26 @@ exports.handler = async (event) => {
       return response;
     }
 
-    const allowedContentTypes = ['image/gif', 'image/jpeg', 'image/png', 'image/webp'];
     const key = decodeURIComponent(request.uri.substring(1));
     const objectResponse = await fetchOriginalImageFromS3(bucketInfo, key);
-
-    if (!objectResponse.ContentType || !allowedContentTypes.includes(objectResponse.ContentType)) {
-      return response;
-    }
-
-    const objectBody = await streamToBuffer(objectResponse.Body);
     const params = new URLSearchParams(request.querystring);
     const formatParam = params.get('format');
     const preserveOriginalFormat = formatParam === 'original';
 
-    if ('image/gif' === objectResponse.ContentType && preserveOriginalFormat) {
+    if (
+      !ALLOWED_CONTENT_TYPES.includes(objectResponse.ContentType) ||
+      ('image/gif' === objectResponse.ContentType && preserveOriginalFormat)
+    ) {
+      objectResponse.Body.destroy();
+
       return response;
     }
 
+    const objectBody = await streamToBuffer(objectResponse.Body);
+
     let contentType = null;
     const image = sharp(objectBody, { autoOrient: true });
-    const { format, pages } = await image.metadata();
+    const { autoOrient, format, pages } = await image.metadata();
 
     if (1 < pages) {
       return response;
@@ -75,7 +92,19 @@ exports.handler = async (event) => {
       applyResize(image, params);
     }
 
-    const buffer = await image.toBuffer();
+    const { data: buffer, info } = await image.toBuffer({ resolveWithObject: true });
+
+    // An explicit format or quality is the caller's choice, so it's served even when bigger.
+    if (
+      !params.has('quality') &&
+      (!formatParam || preserveOriginalFormat) &&
+      info.width === autoOrient.width &&
+      info.height === autoOrient.height &&
+      buffer.length >= objectBody.length
+    ) {
+      return response;
+    }
+
     const responseBody = buffer.toString('base64');
 
     if (isResponseTooLarge(responseBody)) {
@@ -127,7 +156,11 @@ function extractBucketInfo(request) {
  * @returns {Promise<Object>} Promise resolving to the S3 object
  */
 function fetchOriginalImageFromS3(bucketInfo, key) {
-  const s3Client = new S3Client({ region: bucketInfo.region });
+  if (!s3Clients.has(bucketInfo.region)) {
+    s3Clients.set(bucketInfo.region, new S3Client({ region: bucketInfo.region }));
+  }
+
+  const s3Client = s3Clients.get(bucketInfo.region);
   const getObjectCommand = new GetObjectCommand({ Bucket: bucketInfo.name, Key: key });
 
   return s3Client.send(getObjectCommand);

@@ -8,6 +8,7 @@
  */
 function createCloudFrontEvent(options = {}) {
   const bucket = options.bucket || 'test-bucket';
+  const contentType = undefined === options.contentType ? 'image/jpeg' : options.contentType;
   const headers = options.headers || {};
   const querystring = options.querystring || '';
   const region = options.region || 'us-east-1';
@@ -36,14 +37,9 @@ function createCloudFrontEvent(options = {}) {
           response: {
             status,
             statusDescription: 'OK',
-            headers: {
-              'content-type': [
-                {
-                  key: 'Content-Type',
-                  value: 'image/jpeg',
-                },
-              ],
-            },
+            headers: contentType
+              ? { 'content-type': [{ key: 'Content-Type', value: contentType }] }
+              : {},
           },
         },
       },

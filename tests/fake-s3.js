@@ -4,7 +4,8 @@ const http = require('http');
 
 /**
  * Starts an HTTP server that answers path-style S3 GetObject requests (GET /<bucket>/<key>)
- * from objects stored in memory, and records the bucket, key and signing region of each request.
+ * from objects stored in memory, and records the bucket, key and signing region of each request
+ * and how many connections clients opened.
  *
  * @param {number} port Port to listen on on all interfaces, 0 for a random one
  * @return {Promise<Object>} The running fake S3 server
@@ -12,6 +13,7 @@ const http = require('http');
 function startFakeS3(port = 0) {
   const objects = new Map();
   const requests = [];
+  let connections = 0;
 
   const server = http.createServer((request, response) => {
     const [, bucket, ...keyParts] = new URL(request.url, 'http://localhost').pathname.split('/');
@@ -32,11 +34,14 @@ function startFakeS3(port = 0) {
     response.end(object.body);
   });
 
+  server.on('connection', () => connections++);
+
   return new Promise((resolve) => {
     server.listen(port, () => {
       resolve({
         port: server.address().port,
         requests,
+        connections: () => connections,
         putObject: (key, contentType, body) => objects.set(key, { contentType, body }),
         close: () => new Promise((resolveClose) => server.close(resolveClose)),
       });

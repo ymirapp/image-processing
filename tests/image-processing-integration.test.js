@@ -200,6 +200,29 @@ describe('Image Processing Integration', () => {
     ]);
   });
 
+  test.each([
+    { name: 'a non-image content type', contentType: 'text/css' },
+    { name: 'a missing content type', contentType: null },
+  ])('returns the origin response without fetching from S3 for $name', async ({ contentType }) => {
+    const event = createCloudFrontEvent({ uri: '/test-image.jpg', contentType });
+    const response = await invokeHandler(event);
+
+    expect(response).toEqual(event.Records[0].cf.response);
+    expect(fakeS3.requests).toEqual([]);
+  });
+
+  test('reuses its S3 connection across invocations', async () => {
+    const connections = fakeS3.connections();
+
+    await invokeHandler(
+      createCloudFrontEvent({ uri: '/test-image.jpg', querystring: 'width=100' }),
+    );
+    await invokeHandler(createCloudFrontEvent({ uri: '/test-image.jpg', querystring: 'width=50' }));
+
+    expect(fakeS3.requests).toHaveLength(2);
+    expect(fakeS3.connections() - connections).toBeLessThanOrEqual(1);
+  });
+
   test('should fetch the object for a URL-encoded key', async () => {
     fakeS3.putObject('my photos/café.jpg', 'image/jpeg', readFixture('progressive.jpg'));
 
@@ -210,26 +233,6 @@ describe('Image Processing Integration', () => {
 
     expect(fakeS3.requests.map((request) => request.key)).toEqual(['my photos/café.jpg']);
     expect([metadata.width, metadata.height]).toEqual([200, 150]);
-  });
-
-  test('should process a simple JPEG without transformations', async () => {
-    const event = createCloudFrontEvent({
-      uri: '/test-image.jpg',
-      region: 'us-west-2',
-      bucket: 'my-test-bucket',
-    });
-
-    const response = await invokeHandler(event);
-
-    expect(response.status).toBe('200');
-    expect(response.bodyEncoding).toBe('base64');
-
-    const responseBuffer = Buffer.from(response.body, 'base64');
-    const metadata = await sharp(responseBuffer).metadata();
-
-    expect(metadata.format).toBe('jpeg');
-    expect(metadata.width).toBe(300);
-    expect(metadata.height).toBe(200);
   });
 
   test('should resize JPEG image with width parameter', async () => {
@@ -283,6 +286,7 @@ describe('Image Processing Integration', () => {
   test('should convert GIF to PNG format', async () => {
     const event = createCloudFrontEvent({
       uri: '/test-image.gif',
+      querystring: 'width=100',
       region: 'us-west-2',
       bucket: 'my-test-bucket',
     });
@@ -298,8 +302,8 @@ describe('Image Processing Integration', () => {
     const metadata = await sharp(responseBuffer).metadata();
 
     expect(metadata.format).toBe('png');
-    expect(metadata.width).toBe(200);
-    expect(metadata.height).toBe(200);
+    expect(metadata.width).toBe(100);
+    expect(metadata.height).toBe(100);
   });
 
   test('should combine multiple transformations', async () => {
@@ -365,15 +369,7 @@ describe('Image Processing Integration', () => {
 
     const response = await invokeHandler(event);
 
-    expect(response.status).toBe('200');
-    expect(response.bodyEncoding).toBe('base64');
-
-    expect(response.headers).toEqual(originalResponse().headers);
-
-    const responseBuffer = Buffer.from(response.body, 'base64');
-    const metadata = await sharp(responseBuffer).metadata();
-
-    expect(metadata.format).toBe('jpeg');
+    expect(response).toEqual(originalResponse());
   });
 
   test('should preserve original JPEG format when format=original is specified with resize parameters, even with WebP Accept header', async () => {
@@ -420,26 +416,6 @@ describe('Image Processing Integration', () => {
     const metadata = await sharp(responseBuffer).metadata();
 
     expect(metadata.format).toBe('webp');
-  });
-
-  test('should process WebP images as input format', async () => {
-    const event = createCloudFrontEvent({
-      uri: '/test-image.webp',
-      region: 'us-west-2',
-      bucket: 'my-test-bucket',
-    });
-
-    const response = await invokeHandler(event);
-
-    expect(response.status).toBe('200');
-    expect(response.bodyEncoding).toBe('base64');
-
-    const responseBuffer = Buffer.from(response.body, 'base64');
-    const metadata = await sharp(responseBuffer).metadata();
-
-    expect(metadata.format).toBe('webp');
-    expect(metadata.width).toBe(400);
-    expect(metadata.height).toBe(300);
   });
 
   test('should resize WebP images', async () => {
@@ -574,8 +550,9 @@ describe('Image Processing Integration', () => {
       {
         name: 'converts a palette GIF to PNG',
         key: 'static.gif',
+        querystring: 'width=200',
         format: 'png',
-        size: [400, 300],
+        size: [200, 150],
         corners: QUADRANTS,
       },
       {
@@ -799,6 +776,39 @@ describe('Image Processing Integration', () => {
       const { image } = await requestImage('photo.jpg', 'quality=-50', ACCEPT_WEBP);
 
       expect(Buffer.compare(image, expected)).toBe(0);
+    });
+  });
+
+  describe('when re-encoding at the same size does not make the image smaller', () => {
+    beforeAll(async () => {
+      fakeS3.putObject(
+        'palette.png',
+        'image/png',
+        await sharp(readFixture('photo.jpg')).png({ palette: true }).toBuffer(),
+      );
+    });
+
+    test.each([
+      { name: 'a palette PNG that re-encodes bigger', key: 'palette.png' },
+      { name: 'a JPEG already at the default quality', key: 'test-image.jpg' },
+      { name: 'a WebP already at the default quality', key: 'test-image.webp' },
+    ])('returns the original response for $name', async ({ key }) => {
+      const response = await invokeHandler(createCloudFrontEvent({ uri: `/${key}` }));
+
+      expect(response).toEqual(originalResponse());
+    });
+
+    test.each([
+      { name: 'an explicit format', querystring: 'format=png', format: 'png' },
+      { name: 'an explicit quality', querystring: 'format=original&quality=100', format: 'png' },
+      { name: 'a resize', querystring: 'width=200', format: 'png' },
+    ])('still encodes the image for $name', async ({ querystring, format }) => {
+      const response = await invokeHandler(
+        createCloudFrontEvent({ uri: '/palette.png', querystring }),
+      );
+
+      expect(response.bodyEncoding).toBe('base64');
+      expect((await sharp(Buffer.from(response.body, 'base64')).metadata()).format).toBe(format);
     });
   });
 
